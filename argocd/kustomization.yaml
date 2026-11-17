@@ -5,6 +5,15 @@ namespace: argocd
 resources:
   - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.6/manifests/install.yaml
 patches:
+  # 本地(kind on OrbStack)不装 Argo CD 自带的 NetworkPolicy: kindnet 的 NetworkPolicy 实现在这个环境里
+  # 把被选中的 pod 的入站全部丢掉(DNS 的回包、允许的来源的 TCP 都超时)→ 控制器连不上 redis / repo-server。
+  # GKE(Dataplane V2)上保留这些策略。
+  - target: { kind: NetworkPolicy }
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata: { name: any }
   # 轮询 Git 的间隔(默认 3 分钟;本地没有 webhook,缩短到 30 秒)
   - target: { kind: ConfigMap, name: argocd-cm }
     patch: |-
