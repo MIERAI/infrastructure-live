@@ -35,3 +35,6 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# 本地生成的密钥(scripts/secrets.sh)
+.secrets/

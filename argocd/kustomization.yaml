@@ -1,0 +1,21 @@
+# Argo CD(固定版本的官方清单)+ 本地用的设定
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.6/manifests/install.yaml
+patches:
+  # 轮询 Git 的间隔(默认 3 分钟;本地没有 webhook,缩短到 30 秒)
+  - target: { kind: ConfigMap, name: argocd-cm }
+    patch: |-
+      - op: add
+        path: /data
+        value:
+          timeout.reconciliation: 30s
+  # 本地用 port-forward 访问 UI: 不用 TLS
+  - target: { kind: ConfigMap, name: argocd-cmd-params-cm }
+    patch: |-
+      - op: add
+        path: /data
+        value:
+          server.insecure: "true"
