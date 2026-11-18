@@ -15,17 +15,27 @@ for ns in api-factory-dev api-factory-prod sample-app-dev sample-app-prod; do
   has "$ns" ghcr-pull || kubectl -n "$ns" create secret docker-registry ghcr-pull \
     --docker-server=ghcr.io --docker-username="$GHCR_USER" --docker-password="$GHCR_TOKEN" >/dev/null
 done
+# S3 credentials for database backups: the object store (SeaweedFS identity) and every api-factory namespace
+[ -f .secrets/s3-access-key ] || { rand > .secrets/s3-access-key; rand > .secrets/s3-secret-key; }
+ak=$(cat .secrets/s3-access-key); sk=$(cat .secrets/s3-secret-key)
+kubectl create namespace object-storage --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+has object-storage seaweedfs-s3 || kubectl -n object-storage create secret generic seaweedfs-s3 --from-literal=s3.json="$(printf \
+  '{"identities":[{"name":"cnpg","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$ak" "$sk")" >/dev/null
 for ns in api-factory-dev api-factory-prod; do
+  has "$ns" backup-s3 || kubectl -n "$ns" create secret generic backup-s3 \
+    --from-literal=ACCESS_KEY_ID="$ak" --from-literal=ACCESS_SECRET_KEY="$sk" >/dev/null
   if ! has "$ns" api-factory; then
-    pw=$(rand); token=$(rand)
-    db="postgres://factory:$pw@postgres:5432"
-    kubectl -n "$ns" create secret generic postgres --from-literal=POSTGRES_PASSWORD="$pw" >/dev/null
+    pw=$(rand)
+    [ -f ".secrets/$ns.token" ] || rand > ".secrets/$ns.token"   # keep the API token across re-creation
+    token=$(cat ".secrets/$ns.token")
+    db="postgres://factory:$pw@postgres-rw:5432"                 # CloudNativePG primary service
+    kubectl -n "$ns" create secret generic postgres-app --type=kubernetes.io/basic-auth \
+      --from-literal=username=factory --from-literal=password="$pw" >/dev/null
     kubectl -n "$ns" create secret generic api-factory \
       --from-literal=DATABASE_URL="$db/factory?sslmode=disable" \
       --from-literal=FACTORY_SHARDS="1-2=$db/shard_a?sslmode=disable;*=$db/shard_b?sslmode=disable" \
       --from-literal=PAGE_TOKEN_KEY="$(rand)" \
       --from-literal=AUTH_TOKEN_SHA256="$(printf %s "$token" | shasum -a 256 | cut -d' ' -f1)" >/dev/null
-    printf %s "$token" > ".secrets/$ns.token"
   fi
   # synthetic traffic needs the plain token (the server only knows its sha256)
   has "$ns" api-token || kubectl -n "$ns" create secret generic api-token --from-file=token=".secrets/$ns.token" >/dev/null
