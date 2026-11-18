@@ -7,7 +7,10 @@
 # the databases come back empty (dev re-seeded by the schema Job).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[ "${1:-}" = --yes ] || { echo "deletes the kind cluster 'gitops' and .secrets/ — run with --yes"; exit 1; }
+# shellcheck source=scripts/env.sh
+. "$(dirname "$0")/env.sh"
+[ "$TARGET" = kind ] || { echo "rebuild-drill.sh: kind only"; exit 1; }
+[ "${1:-}" = --yes ] || { echo "deletes the kind cluster 'gitops' and .secrets/kind — run with --yes"; exit 1; }
 start=$(date +%s); last=$start
 phase() { local now; now=$(date +%s); printf '  %-40s %5ss  (total %ss)\n' "$1" $((now - last)) $((now - start)); last=$now; }
 log=$(mktemp); trap 'rm -f "$log"' EXIT
@@ -20,15 +23,16 @@ expect=$(find ../gitops-manifests/apps -name '*.yaml' 2>/dev/null | wc -l | tr -
 run scripts/wait-synced.sh --timeout 1800 --healthy --expect $(( ${expect:-1} + 1 ))
 phase "all $(( ${expect:-1} + 1 )) applications Synced/Healthy"
 
-for port in 18080 18081 18082 18083; do
-  for _ in $(seq 1 60); do curl -fsS -m 2 "localhost:$port/healthz" >/dev/null 2>&1 && break; sleep 2; done
-  curl -fsS -m 2 "localhost:$port/healthz" >/dev/null || { echo "✗ localhost:$port/healthz"; exit 1; }
+for app in api-factory-dev api-factory-prod sample-app-dev sample-app-prod; do
+  url=$(app_url "$app")
+  for _ in $(seq 1 60); do curl -fsS -m 2 "$url/healthz" >/dev/null 2>&1 && break; sleep 2; done
+  curl -fsS -m 2 "$url/healthz" >/dev/null || { echo "✗ $url/healthz"; exit 1; }
 done
-for env in dev:18080 prod:18081; do
+for env in dev prod; do
   code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 -X POST -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $(cat ".secrets/api-factory-${env%%:*}.token")" -d '{"pageSize":1}' \
-    "localhost:${env##*:}/factory.jobs.v1.JobService/ListJobs")
-  [ "$code" = 200 ] || { echo "✗ api-factory ${env%%:*}: authenticated RPC → $code"; exit 1; }
+    -H "Authorization: Bearer $(cat "$SECRETS/api-factory-$env.token")" -d '{"pageSize":1}' \
+    "$(app_url "api-factory-$env")/factory.jobs.v1.JobService/ListJobs")
+  [ "$code" = 200 ] || { echo "✗ api-factory $env: authenticated RPC → $code"; exit 1; }
 done
 for ns in api-factory-dev api-factory-prod; do
   for _ in $(seq 1 60); do

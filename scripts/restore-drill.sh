@@ -7,6 +7,8 @@
 # 3. reports how long the restore took, then removes the restored cluster and the marker table
 # The live cluster keeps serving the whole time. Needs a completed base backup (ScheduledBackup "daily", immediate).
 set -euo pipefail
+# shellcheck source=scripts/env.sh
+. "$(dirname "$0")/env.sh"
 NS=${1:-api-factory-dev}
 CL=postgres
 primary=$(kubectl -n "$NS" get cluster "$CL" -o jsonpath='{.status.currentPrimary}')
