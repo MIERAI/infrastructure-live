@@ -1,0 +1,14 @@
+[Unit]
+Description=SeaweedFS S3 for cluster backups (outside the k3s cluster; data on /srv/backups)
+After=k3s.service network-online.target
+Wants=network-online.target
+RequiresMountsFor=/srv/backups
+
+[Service]
+# Bound to the k3s bridge (cni0): reachable from Pods, not from the LAN. Restarts until cni0 exists after boot.
+ExecStart=/usr/local/bin/weed server -dir={{ seaweedfs_dir }} -ip={{ seaweedfs_bind }} -ip.bind={{ seaweedfs_bind }} -volume.max=0 -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

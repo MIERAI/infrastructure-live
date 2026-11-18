@@ -1,0 +1,10 @@
+# Hosts of the personal platform. "laptop" = the always-on HP laptop (ssh alias in ~/.ssh/config, Tailscale address below).
+all:
+  children:
+    server:            # k3s servers (group name expected by k3s.orchestration)
+      hosts:
+        laptop:
+          ansible_host: laptop
+          tailscale_ip: 100.90.245.89
+          lan_ip: 192.168.31.40
+          backup_disk_uuid: ce1e0ec3-f2a3-4627-be2a-a7695f190cb5   # 1 TB HDD (ext4) → /srv/backups

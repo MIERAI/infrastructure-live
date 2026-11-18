@@ -1,0 +1,5 @@
+# SOPS: secrets/*.sops.yaml are encrypted with age (key: ~/Library/Application Support/sops/age/keys.txt on macOS, back it up outside this machine).
+# The public repository only ever sees ciphertext. Read by OpenTofu (carlpett/sops) and Ansible (community.sops).
+creation_rules:
+  - path_regex: secrets/.*\.sops\.yaml$
+    age: age1m96cx6dnu8a63c879eta7u767qrefy92gpppzjdpaxwq3q44csus2gal7g

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # From-scratch rebuild drill: delete the cluster and every local secret, rebuild everything from Git, and time it.
 #   scripts/rebuild-drill.sh --yes
-# Phases: down → up (kind + Argo CD + secrets + root app) → every Application Synced/Healthy → smoke checks
+# Phases: tofu destroy → tofu apply (kind + Argo CD + secrets + root app) → every Application Synced/Healthy → smoke
+# checks. Needs: TF_VAR_ghcr_token (gh auth token --user MIERAI, read:packages) and the age key (secrets/kind.sops.yaml).
 # (each app serves /healthz; api-factory answers an authenticated RPC; the databases archive WAL).
 # Not covered: data. Backups live in the cluster's object store and go with it (on GKE: GCS, outside the cluster);
 # the databases come back empty (dev re-seeded by the schema Job).
@@ -10,16 +11,20 @@ cd "$(dirname "$0")/.."
 # shellcheck source=scripts/env.sh
 . "$(dirname "$0")/env.sh"
 [ "$TARGET" = kind ] || { echo "rebuild-drill.sh: kind only"; exit 1; }
-[ "${1:-}" = --yes ] || { echo "deletes the kind cluster 'gitops' and .secrets/kind — run with --yes"; exit 1; }
+[ "${1:-}" = --yes ] || { echo "deletes the kind cluster 'gitops' — run with --yes"; exit 1; }
+export TF_VAR_ghcr_token=${TF_VAR_ghcr_token:-$(gh auth token --user MIERAI)}
+tofu() { command tofu -chdir=tofu/kind "$@" -input=false -no-color; }
 start=$(date +%s); last=$start
 phase() { local now; now=$(date +%s); printf '  %-40s %5ss  (total %ss)\n' "$1" $((now - last)) $((now - start)); last=$now; }
 log=$(mktemp); trap 'rm -f "$log"' EXIT
 run() { "$@" >"$log" 2>&1 || { cat "$log"; echo "✗ failed: $*"; exit 1; }; }
 
 echo "━━ rebuild drill $(date '+%F %T')"
-run scripts/down.sh;                                              phase "down (cluster + secrets deleted)"
-run scripts/up.sh;                                                phase "up (kind, Argo CD, secrets, root app)"
-expect=$(find ../gitops-manifests/apps -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')
+run tofu destroy -auto-approve;                                   phase "tofu destroy (cluster deleted)"
+run tofu apply -auto-approve;                                     phase "tofu apply (kind, Argo CD, secrets, root app)"
+# the Applications the root renders = the resources of apps/kustomization.yaml (not every *.yaml: the kustomization
+# file itself is one)
+expect=$(grep -cE '^  - .*\.yaml' ../gitops-manifests/apps/kustomization.yaml 2>/dev/null || echo 1)
 run scripts/wait-synced.sh --timeout 1800 --healthy --expect $(( ${expect:-1} + 1 ))
 phase "all $(( ${expect:-1} + 1 )) applications Synced/Healthy"
 

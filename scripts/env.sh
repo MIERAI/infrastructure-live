@@ -1,12 +1,13 @@
 # Sourced by every script: which cluster to act on.
-#   TARGET=kind   (default) local kind cluster, context kind-gitops, apps on localhost:18080-18083
-#   TARGET=laptop k3s on the always-on laptop (kubeconfig ~/.kube/laptop.yaml), apps on <laptop>:30080-30083
+#   TARGET=kind   (default) local kind cluster (tofu/kind), context kind-gitops, apps on localhost:18080-18083
+#   TARGET=laptop k3s on the always-on laptop (kubeconfig ~/.kube/laptop.yaml, written by ansible/), apps on <laptop>:30080-30083
 # kubectl always gets an explicit --context: the scripts never act on whatever context happens to be current
 # (it could be a company cluster) and never change it.
 # shellcheck shell=bash
 export TARGET=${TARGET:-kind}
 case $TARGET in
-  kind)   KCTX=kind-gitops; ROOT_PATH=apps; HOST=localhost ;;
+  kind)   export KUBECONFIG=${KIND_KUBECONFIG:-$HOME/.kube/kind-gitops.yaml}   # written by tofu/kind
+          KCTX=kind-gitops; ROOT_PATH=apps; HOST=localhost ;;
   laptop) export KUBECONFIG=${LAPTOP_KUBECONFIG:-$HOME/.kube/laptop.yaml}
           KCTX=laptop; ROOT_PATH=clusters/laptop; HOST=${LAPTOP_HOST:-100.90.245.89} ;;
   *) echo "unknown TARGET=$TARGET (kind | laptop)" >&2; exit 2 ;;

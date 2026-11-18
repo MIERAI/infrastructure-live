@@ -1,43 +1,64 @@
-# lint: 脚本(shellcheck)+ Argo CD 的 kustomize 能渲染
-# e2e: GitHub 的 runner 上用 kind 起平台(scripts/up.sh)→ gitops-manifests 的全部 Application 都同步
-#      (私有镜像的拉取需要另外的令牌: 这里只确认同步,不确认 Healthy)
+# lint: OpenTofu (fmt / validate) + Ansible (syntax) + scripts (shellcheck)
+# e2e: OpenTofu brings up the platform on kind on the GitHub runner → every Application of gitops-manifests syncs
+#      (no age key in CI: throwaway secrets; private images need another token: only Synced is checked, not Healthy)
 name: ci
 on:
   pull_request:
   push:
     branches: [main]
   schedule:
-    - cron: "0 3 * * 1"   # 每周: 上游(Argo CD 的清单、kind)没变也确认一次能起
+    - cron: "0 3 * * 1"   # weekly: upstream (charts, providers, kind) may break even without a change here
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  TOFU_VERSION: 1.13.9
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v1
+        with: { tofu_version: "${{ env.TOFU_VERSION }}" }
+      - name: state passphrase (throwaway, validate evaluates the encryption block)
+        run: |
+          d="$HOME/Library/Application Support/gitops"; mkdir -p "$d/tofu"
+          openssl rand -base64 33 > "$d/tofu-state.passphrase"
+      - run: tofu fmt -check -recursive tofu
+      - run: for r in kind laptop; do tofu -chdir=tofu/$r init -backend=false -input=false >/dev/null && tofu -chdir=tofu/$r validate; done
       - run: shellcheck scripts/*.sh
-      - run: kubectl kustomize argocd > /dev/null
+      - name: ansible syntax
+        working-directory: ansible
+        run: |
+          pipx install --include-deps ansible-core >/dev/null
+          ansible-galaxy collection install -r requirements.yml >/dev/null
+          ansible-playbook site.yml --syntax-check
   e2e:
     needs: lint
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - name: kind
-        run: |   # runner 预装的 kind 版本不固定 → 用固定的版本
-          mkdir -p "$RUNNER_TEMP/bin"
-          curl -fsSLo "$RUNNER_TEMP/bin/kind" https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64 && chmod +x "$RUNNER_TEMP/bin/kind"
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - name: up
+      - uses: opentofu/setup-opentofu@v1
+        with: { tofu_version: "${{ env.TOFU_VERSION }}", tofu_wrapper: false }
+      - name: throwaway state passphrase and secrets
+        run: |
+          d="$HOME/Library/Application Support/gitops"; mkdir -p "$d/tofu"
+          openssl rand -base64 33 > "$d/tofu-state.passphrase"
+          python3 -c 'import json,secrets; r=lambda: secrets.token_hex(24); print(json.dumps({"s3":{"access_key":r(),"secret_key":r()},"grafana_admin_password":r(),"api_factory":{e:{"api_token":r(),"db_password":r(),"page_token_key":r()} for e in ("dev","prod")}}))' > "$RUNNER_TEMP/secrets.json"
+      - name: tofu apply
         env:
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ github.token }}
-        run: scripts/up.sh
-      # api-factory: 私有镜像(建表的钩子拉不到)→ 只要求 Application 存在(共 5 个)
+          TF_VAR_ghcr_token: ${{ github.token }}
+        run: |
+          TF_VAR_secrets_json=$(cat "$RUNNER_TEMP/secrets.json")
+          export TF_VAR_secrets_json
+          tofu -chdir=tofu/kind init -input=false >/dev/null
+          tofu -chdir=tofu/kind apply -auto-approve -input=false
+      # api-factory: private images (the schema hook cannot pull) → only require the Applications to exist (5)
       - run: scripts/wait-synced.sh --timeout 600 --only "^(root|sample-app-.*)$" --expect 5
       - if: failure()
         name: diagnostics
+        env: { KUBECONFIG: /home/runner/.kube/kind-gitops.yaml }
         run: |
           kubectl get applications -n argocd -o wide || true
           kubectl -n argocd get applications -o jsonpath='{range .items[*]}{.metadata.name}: {.status.conditions}{"\n"}{end}' || true

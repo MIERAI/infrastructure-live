@@ -1,0 +1,10 @@
+# The HDD with the object store's data. nofail: the host still boots without it (SeaweedFS then refuses to start,
+# RequiresMountsFor), it never silently writes to the root disk.
+- name: Mount the backup disk on /srv/backups
+  ansible.posix.mount:
+    path: /srv/backups
+    src: "UUID={{ backup_disk_uuid }}"
+    fstype: ext4
+    opts: defaults,nofail,noatime
+    passno: "2"
+    state: mounted
