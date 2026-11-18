@@ -1,0 +1,13 @@
+# Off-site copy of the laptop cluster's backups (rclone crypt: the phone only ever stores ciphertext).
+# The cluster's key may only run sftp (no shell, no forwarding); sftp-server starts in the backup directory.
+- name: Backup directory
+  ansible.builtin.file: { path: "{{ ansible_env.HOME }}/{{ offsite_dir }}", state: directory, mode: "0700" }
+
+- name: sftp-only key for the cluster
+  ansible.posix.authorized_key:
+    user: "{{ ansible_user_id }}"
+    path: "{{ ansible_env.HOME }}/.ssh/authorized_keys"
+    manage_dir: false
+    key: "{{ offsite_pubkey }}"
+    key_options: >-
+      restrict,command="{{ ansible_env.PREFIX }}/libexec/sftp-server -d {{ ansible_env.HOME }}/{{ offsite_dir }}"

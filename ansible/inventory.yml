@@ -8,3 +8,8 @@ all:
           tailscale_ip: 100.90.245.89
           lan_ip: 192.168.31.40
           backup_disk_uuid: ce1e0ec3-f2a3-4627-be2a-a7695f190cb5   # 1 TB HDD (ext4) → /srv/backups
+    offsite:           # off-site backup target: the always-plugged-in Android phone (Termux sshd), leaves home with its owner
+      hosts:
+        phone:
+          ansible_host: phone          # ~/.ssh/config: 100.80.225.15:8022, key id_ed25519_personal
+          ansible_python_interpreter: /data/data/com.termux/files/usr/bin/python3

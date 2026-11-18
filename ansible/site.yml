@@ -34,3 +34,7 @@
   hosts: server
   become: true
   roles: [{ role: gh_runner, tags: runner }]
+
+- name: Off-site backup target (phone)
+  hosts: offsite
+  roles: [{ role: offsite_target, tags: offsite }]

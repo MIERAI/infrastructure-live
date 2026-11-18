@@ -11,7 +11,8 @@ terraform {
 locals {
   app_namespaces = ["api-factory-dev", "api-factory-prod", "sample-app-dev", "sample-app-prod"]
   db_envs        = { for e in ["dev", "prod"] : "api-factory-${e}" => var.secrets.api_factory[e] }
-  namespaces     = toset(concat(local.app_namespaces, ["monitoring"], var.in_cluster_object_storage ? ["object-storage"] : []))
+  offsite        = nonsensitive(var.secrets.offsite != null) # only whether the section exists
+  namespaces     = toset(concat(local.app_namespaces, ["monitoring"], var.in_cluster_object_storage ? ["object-storage"] : [], local.offsite ? ["backup-offsite"] : []))
 }
 
 # ── Argo CD ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -127,6 +128,22 @@ resource "kubernetes_secret_v1" "grafana_admin" {
   data = { "admin-user" = "admin", "admin-password" = var.secrets.grafana_admin_password }
 }
 
+# off-site copy (gitops-manifests platform/offsite-backup): object store → phone, encrypted by rclone crypt
+resource "kubernetes_secret_v1" "offsite" {
+  count = local.offsite ? 1 : 0
+  metadata {
+    name      = "offsite-backup"
+    namespace = kubernetes_namespace_v1.ns["backup-offsite"].metadata[0].name
+  }
+  data = {
+    S3_ACCESS_KEY   = var.secrets.s3.access_key
+    S3_SECRET_KEY   = var.secrets.s3.secret_key
+    CRYPT_PASSWORD  = var.secrets.offsite.crypt_password
+    CRYPT_SALT      = var.secrets.offsite.crypt_salt
+    ssh_private_key = var.secrets.offsite.ssh_private_key
+  }
+}
+
 # ── Root application (app of apps) ──────────────────────────────────────────────────────────────────────────────────
 resource "helm_release" "root" {
   name       = "root"
@@ -142,7 +159,7 @@ resource "helm_release" "root" {
     syncPolicy  = { automated = { prune = true, selfHeal = true } }
   } } })]
   depends_on = [helm_release.argocd, kubernetes_secret_v1.api_factory, kubernetes_secret_v1.backup_s3,
-  kubernetes_secret_v1.ghcr_pull, kubernetes_secret_v1.grafana_admin, kubernetes_secret_v1.seaweedfs_s3]
+  kubernetes_secret_v1.ghcr_pull, kubernetes_secret_v1.grafana_admin, kubernetes_secret_v1.seaweedfs_s3, kubernetes_secret_v1.offsite]
 }
 
 # ── Local copies for the operator (.secrets/<cluster>/, gitignored): API tokens for callers, UI passwords ────────────

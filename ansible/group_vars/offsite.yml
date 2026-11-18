@@ -1,0 +1,3 @@
+offsite_dir: backups/gitops     # under the Termux home
+# public half of secrets/laptop.sops.yaml offsite.ssh_private_key (used by the laptop cluster's offsite-backup CronJob)
+offsite_pubkey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMjlZOtqOuLmaAX8ImkQfLjcVWqzsQLYOceRA3ym5Av gitops-offsite-backup
