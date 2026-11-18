@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: opentofu/setup-opentofu@v1
         with: { tofu_version: "${{ env.TOFU_VERSION }}" }
-      - name: state passphrase (throwaway: validate evaluates the encryption block)
+      - name: state passphrase (throwaway, validate evaluates the encryption block)
         run: |
           d="$HOME/Library/Application Support/gitops"; mkdir -p "$d/tofu"
           openssl rand -base64 33 > "$d/tofu-state.passphrase"
@@ -50,7 +50,8 @@ jobs:
         env:
           TF_VAR_ghcr_token: ${{ github.token }}
         run: |
-          export TF_VAR_secrets_json="$(cat "$RUNNER_TEMP/secrets.json")"
+          TF_VAR_secrets_json=$(cat "$RUNNER_TEMP/secrets.json")
+          export TF_VAR_secrets_json
           tofu -chdir=tofu/kind init -input=false >/dev/null
           tofu -chdir=tofu/kind apply -auto-approve -input=false
       # api-factory: private images (the schema hook cannot pull) → only require the Applications to exist (5)
