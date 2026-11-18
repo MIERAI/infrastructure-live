@@ -2,7 +2,7 @@
 # Point-in-time recovery drill for an api-factory environment (CloudNativePG + Barman Cloud plugin).
 #   scripts/restore-drill.sh [namespace]      (default api-factory-dev)
 # 1. writes a marker row (database "postgres", table restore_drill: the app's data is not touched), notes the time,
-#    deletes the row, forces a WAL switch
+#    deletes the row, switches WAL and waits until that segment is archived
 # 2. restores a new cluster "restore-drill" from the backups to that time and checks the row is back
 # 3. reports how long the restore took, then removes the restored cluster and the marker table
 # The live cluster keeps serving the whole time. Needs a completed base backup (ScheduledBackup "daily", immediate).
@@ -23,7 +23,14 @@ backup=$(kubectl -n "$NS" get backups -o jsonpath='{range .items[?(@.status.phas
 marker="drill-$(date +%s)"
 psql_live "CREATE TABLE IF NOT EXISTS restore_drill(marker text); INSERT INTO restore_drill VALUES ('$marker')" >/dev/null
 sleep 2; target=$(psql_live "SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"); sleep 2
-psql_live "DELETE FROM restore_drill; SELECT pg_switch_wal()" >/dev/null
+psql_live "DELETE FROM restore_drill" >/dev/null
+# The DELETE commit (first record after the target) must be in the archive, or recovery stops before the target and
+# retries until archive_timeout ships the segment (~5 min). Separate statement: psql -c "a; b" is ONE transaction,
+# which would put the commit after the switch.
+wal=$(psql_live "SELECT pg_walfile_name(pg_switch_wal())")
+for _ in $(seq 1 60); do
+  [ "$(psql_live "SELECT last_archived_wal >= '$wal' FROM pg_stat_archiver")" = t ] && break; sleep 1
+done
 echo "• $NS: marker $marker written, target time $target, row deleted (latest base backup: $backup)"
 
 start=$(date +%s)
