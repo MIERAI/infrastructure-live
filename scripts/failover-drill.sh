@@ -4,6 +4,8 @@
 # the outage caused (from the api-factory logs).
 #   scripts/failover-drill.sh [namespace]      (default api-factory-prod: 2 instances)
 set -euo pipefail
+# shellcheck source=scripts/env.sh
+. "$(dirname "$0")/env.sh"
 NS=${1:-api-factory-prod}
 n=$(kubectl -n "$NS" get cluster postgres -o jsonpath='{.spec.instances}')
 [ "$n" -ge 2 ] || { echo "✗ $NS has $n instance(s): nothing to fail over to"; exit 1; }

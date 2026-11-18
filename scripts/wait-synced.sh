@@ -4,6 +4,8 @@
 #     --only   只看名字匹配的 Application(其余只要求存在)
 #     --expect Application 至少要有几个(包括 root)
 set -euo pipefail
+# shellcheck source=scripts/env.sh
+. "$(dirname "$0")/env.sh"
 timeout=600; healthy=""; only="."; expect=2
 while [ $# -gt 0 ]; do
   case $1 in

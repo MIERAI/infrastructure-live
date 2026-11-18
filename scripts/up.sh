@@ -3,11 +3,12 @@
 #   需要: docker / kind / kubectl / gh(GHCR 的拉取令牌: gh auth token,要 read:packages)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-CLUSTER=gitops
-if ! kind get clusters | grep -qx $CLUSTER; then
+# shellcheck source=scripts/env.sh
+. "$(dirname "$0")/env.sh"
+if [ "$TARGET" = kind ] && ! kind get clusters | grep -qx gitops; then
   kind create cluster --config kind/cluster.yaml
 fi
-kubectl config use-context kind-$CLUSTER >/dev/null
+# laptop: k3s and the host's object store come from scripts/laptop-host.sh
 echo "━━ Argo CD"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl apply -k argocd --server-side --force-conflicts >/dev/null
@@ -21,7 +22,7 @@ for _ in $(seq 1 60); do
 done
 echo "━━ 密钥(本地生成,不进 Git)"
 scripts/secrets.sh
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d > .secrets/argocd-admin.password
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d > "$SECRETS/argocd-admin.password"
 echo "━━ 根应用"
-kubectl apply -f bootstrap/root.yaml >/dev/null
-echo "✓ 平台就绪。UI: scripts/ui.sh(Argo CD / Grafana / Prometheus / Rollouts),密码在 .secrets/"
+sed "s#path: apps#path: $ROOT_PATH#" bootstrap/root.yaml | kubectl apply -f - >/dev/null
+echo "✓ 平台就绪。UI: scripts/ui.sh(Argo CD / Grafana / Prometheus / Rollouts),密码在 $SECRETS/"
