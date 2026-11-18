@@ -1,0 +1,50 @@
+# SeaweedFS (S3) as a systemd service OUTSIDE the cluster: a cluster rebuild never loses the backups.
+- name: Check the installed version
+  ansible.builtin.command: /usr/local/bin/weed version
+  register: weed_version
+  changed_when: false
+  failed_when: false
+
+- name: Install weed {{ seaweedfs_version }}
+  when: seaweedfs_version not in (weed_version.stdout | default(''))
+  ansible.builtin.unarchive:
+    src: "https://github.com/seaweedfs/seaweedfs/releases/download/{{ seaweedfs_version }}/linux_amd64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [weed]
+    mode: "0755"
+  notify: restart seaweedfs
+
+- name: Data directory
+  ansible.builtin.file: { path: "{{ seaweedfs_dir }}", state: directory, mode: "0700" }
+
+- name: Config directory
+  ansible.builtin.file: { path: /etc/seaweedfs, state: directory, mode: "0700" }
+
+- name: S3 identity (credentials from SOPS)
+  ansible.builtin.copy:
+    dest: /etc/seaweedfs/s3.json
+    mode: "0600"
+    content: "{{ {'identities': [{'name': 'cnpg', 'credentials': [{'accessKey': platform_secrets.s3.access_key, 'secretKey': platform_secrets.s3.secret_key}], 'actions': ['Admin', 'Read', 'Write', 'List', 'Tagging']}]} | to_json(separators=(',', ':')) }}"
+  no_log: true
+  notify: restart seaweedfs
+
+- name: systemd unit
+  ansible.builtin.template: { src: seaweedfs.service.j2, dest: /etc/systemd/system/seaweedfs.service, mode: "0644" }
+  notify: restart seaweedfs
+
+- name: Enable and start
+  ansible.builtin.systemd: { name: seaweedfs, enabled: true, state: started, daemon_reload: true }
+
+- name: Apply pending restarts before using the service
+  ansible.builtin.meta: flush_handlers
+
+- name: Bucket "cnpg"
+  ansible.builtin.shell: |
+    set -o pipefail
+    ws() { echo "$1" | weed shell -master={{ seaweedfs_bind }}:9333 2>&1; }
+    for i in $(seq 1 30); do ws s3.bucket.list | grep -q 'cannot connect' || break; sleep 2; done
+    if ws s3.bucket.list | grep -qE '^\s*cnpg\s'; then echo exists; else ws 's3.bucket.create -name cnpg' >/dev/null; echo created; fi
+  args: { executable: /bin/bash }
+  register: bucket
+  changed_when: "'created' in bucket.stdout"

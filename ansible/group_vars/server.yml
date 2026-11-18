@@ -1,0 +1,18 @@
+# k3s.orchestration
+k3s_version: v1.36.5+k3s1
+api_endpoint: "{{ tailscale_ip }}"
+server_config_yaml: |
+  disable: [traefik]          # apps use NodePorts
+  write-kubeconfig-mode: "0644"
+  tls-san: [{{ tailscale_ip }}, {{ lan_ip }}, {{ inventory_hostname }}]
+kubeconfig: ~/.kube/laptop.yaml   # own file on the workstation: ~/.kube/config is never touched
+user_kubectl: false
+# seaweedfs
+seaweedfs_version: "4.51"
+seaweedfs_dir: /srv/backups/gitops-objects
+seaweedfs_bind: 10.42.0.1        # k3s bridge (cni0): reachable from Pods, not from the LAN
+# gh_runner
+gh_runner_repo: MIERAI/api-factory
+gh_runner_version: 2.338.2
+# decrypted with the age key (secrets/laptop.sops.yaml, shared with tofu/laptop)
+platform_secrets: "{{ lookup('community.sops.sops', playbook_dir ~ '/../secrets/laptop.sops.yaml') | from_yaml }}"

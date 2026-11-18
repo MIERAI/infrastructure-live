@@ -1,0 +1,36 @@
+# Host layer of the laptop cluster ("the cloud"). Idempotent; the platform on top is tofu/laptop.
+#   cd ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook site.yml [--check --diff]
+#   only some parts: --tags disk,k3s,seaweedfs,kubeconfig,runner
+# Note: the k3s.orchestration server role restarts k3s on every run (~30 s without API; pods keep running).
+- name: Backup disk
+  hosts: server
+  become: true
+  roles: [{ role: backup_disk, tags: disk }]
+
+- name: k3s (official k3s-io/k3s-ansible)
+  hosts: server
+  become: true
+  pre_tasks:
+    # The role always runs /usr/local/bin/k3s-install.sh but downloads it only for a new / older k3s: a host installed
+    # without the role (or with the script elsewhere) needs it in place to be adopted.
+    - name: k3s install script in the place the role expects
+      ansible.builtin.get_url: { url: https://get.k3s.io/, dest: /usr/local/bin/k3s-install.sh, mode: "0755", force: false }
+      tags: k3s
+  roles:
+    - { role: k3s.orchestration.prereq, tags: k3s }
+    - { role: k3s.orchestration.k3s_server, tags: k3s }
+
+- name: Object storage outside the cluster
+  hosts: server
+  become: true
+  roles: [{ role: seaweedfs, tags: seaweedfs }]
+
+- name: Kubeconfig on the workstation
+  hosts: server
+  become: true
+  roles: [{ role: kubeconfig, tags: kubeconfig }]
+
+- name: GitHub Actions runner (private repository only)
+  hosts: server
+  become: true
+  roles: [{ role: gh_runner, tags: runner }]

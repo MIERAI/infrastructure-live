@@ -1,0 +1,174 @@
+# The platform on any Kubernetes cluster: Argo CD (Helm) → runtime secrets (from SOPS) → root application.
+# Everything after that comes from gitops-manifests (Argo CD reconciles it).
+terraform {
+  required_providers {
+    helm       = { source = "hashicorp/helm" }
+    kubernetes = { source = "hashicorp/kubernetes" }
+    local      = { source = "hashicorp/local" }
+  }
+}
+
+locals {
+  app_namespaces = ["api-factory-dev", "api-factory-prod", "sample-app-dev", "sample-app-prod"]
+  db_envs        = { for e in ["dev", "prod"] : "api-factory-${e}" => var.secrets.api_factory[e] }
+  namespaces     = toset(concat(local.app_namespaces, ["monitoring"], var.in_cluster_object_storage ? ["object-storage"] : []))
+}
+
+# ── Argo CD ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+resource "helm_release" "argocd" {
+  name             = "argocd"
+  namespace        = "argocd"
+  create_namespace = true
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  version          = var.argocd_chart_version
+  wait             = true
+  timeout          = 600
+  values = [yamlencode({
+    fullnameOverride = "argocd" # same object names as the upstream install manifests (argocd-server, …)
+    configs = {
+      cm     = { "timeout.reconciliation" = "30s" } # no webhook locally: poll Git every 30s
+      params = { "server.insecure" = true }         # UI via port-forward, no TLS
+    }
+    # Argo CD's own NetworkPolicies stay off: kindnet drops all ingress of selected pods in this environment
+    global = { networkPolicy = { create = false } }
+  })]
+}
+
+# ── Runtime secrets ─────────────────────────────────────────────────────────────────────────────────────────────────
+# The public gitops-manifests only reference them (secretKeyRef). Values: secrets/<cluster>.sops.yaml.
+# Namespaces are created here (the secrets must exist before the first sync); Argo CD adds its labels later.
+resource "kubernetes_namespace_v1" "ns" {
+  for_each = local.namespaces
+  metadata { name = each.key }
+  lifecycle { ignore_changes = [metadata[0].labels, metadata[0].annotations] }
+}
+
+resource "kubernetes_secret_v1" "ghcr_pull" {
+  for_each = toset(local.app_namespaces)
+  metadata {
+    name      = "ghcr-pull"
+    namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
+  }
+  type = "kubernetes.io/dockerconfigjson"
+  data = {
+    ".dockerconfigjson" = jsonencode({ auths = { "ghcr.io" = {
+      username = var.ghcr_user
+      password = var.ghcr_token
+      auth     = base64encode("${var.ghcr_user}:${var.ghcr_token}")
+    } } })
+  }
+  lifecycle { ignore_changes = [data] } # the GitHub token rotates on the workstation; refresh with -replace
+}
+
+resource "kubernetes_secret_v1" "seaweedfs_s3" {
+  count = var.in_cluster_object_storage ? 1 : 0
+  metadata {
+    name      = "seaweedfs-s3"
+    namespace = kubernetes_namespace_v1.ns["object-storage"].metadata[0].name
+  }
+  data = {
+    "s3.json" = jsonencode({ identities = [{
+      name        = "cnpg"
+      credentials = [{ accessKey = var.secrets.s3.access_key, secretKey = var.secrets.s3.secret_key }]
+      actions     = ["Admin", "Read", "Write", "List", "Tagging"]
+    }] })
+  }
+}
+
+resource "kubernetes_secret_v1" "backup_s3" {
+  for_each = local.db_envs
+  metadata {
+    name      = "backup-s3"
+    namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
+  }
+  data = { ACCESS_KEY_ID = var.secrets.s3.access_key, ACCESS_SECRET_KEY = var.secrets.s3.secret_key }
+}
+
+resource "kubernetes_secret_v1" "postgres_app" {
+  for_each = local.db_envs
+  metadata {
+    name      = "postgres-app"
+    namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
+  }
+  type = "kubernetes.io/basic-auth"
+  data = { username = "factory", password = each.value.db_password }
+}
+
+resource "kubernetes_secret_v1" "api_factory" {
+  for_each = local.db_envs
+  metadata {
+    name      = "api-factory"
+    namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
+  }
+  data = {
+    DATABASE_URL      = "postgres://factory:${each.value.db_password}@postgres-rw:5432/factory?sslmode=disable"
+    FACTORY_SHARDS    = "1-2=postgres://factory:${each.value.db_password}@postgres-rw:5432/shard_a?sslmode=disable;*=postgres://factory:${each.value.db_password}@postgres-rw:5432/shard_b?sslmode=disable"
+    PAGE_TOKEN_KEY    = each.value.page_token_key
+    AUTH_TOKEN_SHA256 = sha256(each.value.api_token) # the server only knows the hash
+  }
+}
+
+# synthetic traffic / load tests need the plain token
+resource "kubernetes_secret_v1" "api_token" {
+  for_each = local.db_envs
+  metadata {
+    name      = "api-token"
+    namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
+  }
+  data = { token = each.value.api_token }
+}
+
+resource "kubernetes_secret_v1" "grafana_admin" {
+  metadata {
+    name      = "grafana-admin"
+    namespace = kubernetes_namespace_v1.ns["monitoring"].metadata[0].name
+  }
+  data = { "admin-user" = "admin", "admin-password" = var.secrets.grafana_admin_password }
+}
+
+# ── Root application (app of apps) ──────────────────────────────────────────────────────────────────────────────────
+resource "helm_release" "root" {
+  name       = "root"
+  namespace  = "argocd"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argocd-apps"
+  version    = var.argocd_apps_chart_version
+  values = [yamlencode({ applications = { root = {
+    namespace   = "argocd"
+    project     = "default"
+    source      = { repoURL = var.manifests_repo, targetRevision = "main", path = var.root_path }
+    destination = { server = "https://kubernetes.default.svc", namespace = "argocd" }
+    syncPolicy  = { automated = { prune = true, selfHeal = true } }
+  } } })]
+  depends_on = [helm_release.argocd, kubernetes_secret_v1.api_factory, kubernetes_secret_v1.backup_s3,
+  kubernetes_secret_v1.ghcr_pull, kubernetes_secret_v1.grafana_admin, kubernetes_secret_v1.seaweedfs_s3]
+}
+
+# ── Local copies for the operator (.secrets/<cluster>/, gitignored): API tokens for callers, UI passwords ────────────
+resource "local_sensitive_file" "token" {
+  for_each        = local.db_envs
+  filename        = "${var.local_secrets_dir}/${each.key}.token"
+  content         = each.value.api_token
+  file_permission = "0600"
+}
+
+resource "local_sensitive_file" "grafana" {
+  filename        = "${var.local_secrets_dir}/grafana-admin.password"
+  content         = var.secrets.grafana_admin_password
+  file_permission = "0600"
+}
+
+data "kubernetes_secret_v1" "argocd_admin" {
+  metadata {
+    name      = "argocd-initial-admin-secret"
+    namespace = "argocd"
+  }
+  depends_on = [helm_release.argocd]
+}
+
+resource "local_sensitive_file" "argocd" {
+  filename        = "${var.local_secrets_dir}/argocd-admin.password"
+  content         = try(data.kubernetes_secret_v1.argocd_admin.data.password, "")
+  file_permission = "0600"
+}

@@ -1,0 +1,35 @@
+# k3s.orchestration copies k3s.yaml to {{ kubeconfig }} on the workstation with the names "default"
+# (server address already set to api_endpoint). Rename cluster / user / context to the inventory name.
+- name: Kubeconfig exists
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat: { path: "{{ kubeconfig }}" }
+  register: kc
+
+- name: Fetch the kubeconfig when the k3s role did not (first run without kubectl on the workstation)
+  when: not kc.stat.exists
+  ansible.builtin.fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ kubeconfig }}"
+    flat: true
+
+- name: Server address = API endpoint
+  delegate_to: localhost
+  become: false
+  ansible.builtin.replace:
+    path: "{{ kubeconfig }}"
+    regexp: 'server: https://127\.0\.0\.1:6443'
+    replace: "server: https://{{ api_endpoint }}:6443"
+
+- name: Names "default" → "{{ inventory_hostname }}"
+  delegate_to: localhost
+  become: false
+  ansible.builtin.replace:
+    path: "{{ kubeconfig }}"
+    regexp: ': default$'
+    replace: ": {{ inventory_hostname }}"
+
+- name: Only the owner can read it
+  delegate_to: localhost
+  become: false
+  ansible.builtin.file: { path: "{{ kubeconfig }}", mode: "0600" }

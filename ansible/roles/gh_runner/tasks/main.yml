@@ -1,0 +1,86 @@
+# GitHub Actions self-hosted runner for the PRIVATE repository {{ gh_runner_repo }} only (spec review / generation:
+# the AI models are reachable only inside the tailnet).
+# The runner user is in group docker (= root on this host): acceptable only because only the owner can push to a private
+# repository. Never register it on a public repository (a fork's pull request could run arbitrary code here).
+# Needs on the workstation: gh logged in as MIERAI (registration token). Undo: svc.sh uninstall, remove the runner in
+# the repository settings, userdel -r ghrunner.
+- name: The repository is private
+  delegate_to: localhost
+  become: false
+  ansible.builtin.command: gh api repos/{{ gh_runner_repo }} --jq .private
+  environment: { GH_TOKEN: "{{ lookup('pipe', 'gh auth token --user MIERAI') }}" }
+  register: repo_private
+  changed_when: false
+  failed_when: repo_private.stdout != 'true'
+
+- name: Packages (gh for PR comments, docker for acceptance tests, node for Claude Code CLI)
+  ansible.builtin.apt: { name: [git, gh, docker.io, nodejs, npm], state: present, update_cache: true, cache_valid_time: 86400 }
+
+- name: Docker running
+  ansible.builtin.systemd: { name: docker, enabled: true, state: started }
+
+- name: Runner user
+  ansible.builtin.user: { name: ghrunner, shell: /bin/bash, groups: [docker], append: true, create_home: true }
+
+- name: Claude Code CLI (npm, user prefix)
+  become_user: ghrunner
+  ansible.builtin.shell: |
+    npm config set prefix ~/.npm-global
+    [ -x ~/.npm-global/bin/claude ] && echo present || { npm install -g --silent @anthropic-ai/claude-code >/dev/null && echo installed; }
+  args: { executable: /bin/bash }
+  register: claude_cli
+  changed_when: "'installed' in claude_cli.stdout"
+
+- name: Runner directory
+  ansible.builtin.file: { path: /home/ghrunner/actions-runner, state: directory, owner: ghrunner, group: ghrunner, mode: "0755" }
+
+- name: Runner {{ gh_runner_version }}
+  ansible.builtin.unarchive:
+    src: "https://github.com/actions/runner/releases/download/v{{ gh_runner_version }}/actions-runner-linux-x64-{{ gh_runner_version }}.tar.gz"
+    dest: /home/ghrunner/actions-runner
+    remote_src: true
+    owner: ghrunner
+    group: ghrunner
+    creates: /home/ghrunner/actions-runner/config.sh
+
+- name: PATH of the runner (Claude Code CLI)
+  ansible.builtin.copy:
+    dest: /home/ghrunner/actions-runner/.path
+    content: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/home/ghrunner/.npm-global/bin\n"
+    owner: ghrunner
+    group: ghrunner
+    mode: "0644"
+
+- name: Registered?
+  ansible.builtin.stat: { path: /home/ghrunner/actions-runner/.runner }
+  register: registered
+
+- name: Register (labels laptop)
+  when: not registered.stat.exists
+  block:
+    - name: Registration token
+      delegate_to: localhost
+      become: false
+      ansible.builtin.command: gh api -X POST repos/{{ gh_runner_repo }}/actions/runners/registration-token --jq .token
+      environment: { GH_TOKEN: "{{ lookup('pipe', 'gh auth token --user MIERAI') }}" }
+      register: reg_token
+      changed_when: false
+      no_log: true
+    - name: config.sh
+      become_user: ghrunner
+      ansible.builtin.command:
+        argv: [./config.sh, --unattended, --replace, --url, "https://github.com/{{ gh_runner_repo }}",
+               --token, "{{ reg_token.stdout }}", --name, "{{ inventory_hostname }}", --labels, laptop, --work, _work]
+        chdir: /home/ghrunner/actions-runner
+      no_log: true
+
+- name: Service installed?
+  ansible.builtin.shell: systemctl list-unit-files --no-legend 'actions.runner.*' | grep -q .
+  register: svc
+  changed_when: false
+  failed_when: false
+
+- name: Install the service (svc.sh)
+  when: svc.rc != 0
+  ansible.builtin.shell: ./svc.sh install ghrunner >/dev/null && ./svc.sh start >/dev/null
+  args: { chdir: /home/ghrunner/actions-runner }
