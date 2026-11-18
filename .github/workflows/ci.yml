@@ -1,0 +1,40 @@
+# lint: 脚本(shellcheck)+ Argo CD 的 kustomize 能渲染
+# e2e: GitHub 的 runner 上用 kind 起平台(scripts/up.sh)→ gitops-manifests 的全部 Application 都同步
+#      (私有镜像的拉取需要另外的令牌: 这里只确认同步,不确认 Healthy)
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * 1"   # 每周: 上游(Argo CD 的清单、kind)没变也确认一次能起
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck scripts/*.sh
+      - run: kubectl kustomize argocd > /dev/null
+  e2e:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: kind
+        run: |
+          curl -fsSLo /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64 && chmod +x /usr/local/bin/kind
+      - name: up
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: scripts/up.sh
+      # api-factory: 私有镜像(建表的钩子拉不到)→ 只要求 Application 存在(共 5 个)
+      - run: scripts/wait-synced.sh --timeout 600 --only "^(root|sample-app-.*)$" --expect 5
+      - if: failure()
+        run: |
+          kubectl get applications -n argocd -o wide || true
+          kubectl get pods -A || true
