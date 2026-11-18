@@ -27,5 +27,14 @@ for ns in api-factory-dev api-factory-prod; do
       --from-literal=AUTH_TOKEN_SHA256="$(printf %s "$token" | shasum -a 256 | cut -d' ' -f1)" >/dev/null
     printf %s "$token" > ".secrets/$ns.token"
   fi
+  # synthetic traffic needs the plain token (the server only knows its sha256)
+  has "$ns" api-token || kubectl -n "$ns" create secret generic api-token --from-file=token=".secrets/$ns.token" >/dev/null
 done
-echo "✓ secrets(API 的令牌: .secrets/<namespace>.token)"
+# Grafana admin (kube-prometheus-stack: grafana.admin.existingSecret)
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+if ! has monitoring grafana-admin; then
+  pw=$(rand)
+  kubectl -n monitoring create secret generic grafana-admin --from-literal=admin-user=admin --from-literal=admin-password="$pw" >/dev/null
+  printf %s "$pw" > .secrets/grafana-admin.password
+fi
+echo "✓ secrets (API tokens: .secrets/<namespace>.token, Grafana: .secrets/grafana-admin.password)"
