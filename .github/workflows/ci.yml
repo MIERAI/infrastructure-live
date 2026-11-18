@@ -37,6 +37,10 @@ jobs:
       # api-factory: 私有镜像(建表的钩子拉不到)→ 只要求 Application 存在(共 5 个)
       - run: scripts/wait-synced.sh --timeout 600 --only "^(root|sample-app-.*)$" --expect 5
       - if: failure()
+        name: diagnostics
         run: |
           kubectl get applications -n argocd -o wide || true
+          kubectl -n argocd get applications -o jsonpath='{range .items[*]}{.metadata.name}: {.status.conditions}{"\n"}{end}' || true
           kubectl get pods -A || true
+          kubectl -n argocd logs deploy/argocd-repo-server --tail=40 || true
+          kubectl -n argocd logs statefulset/argocd-application-controller --tail=40 || true

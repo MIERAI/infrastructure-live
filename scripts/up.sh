@@ -11,8 +11,14 @@ kubectl config use-context kind-$CLUSTER >/dev/null
 echo "━━ Argo CD"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl apply -k argocd --server-side --force-conflicts >/dev/null
-kubectl -n argocd rollout status deploy/argocd-repo-server deploy/argocd-server --timeout=300s >/dev/null
+for d in $(kubectl -n argocd get deploy -o name); do kubectl -n argocd rollout status "$d" --timeout=300s >/dev/null; done
 kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=300s >/dev/null
+# wait until repo-server accepts connections (an early failed comparison can stick for a while)
+for _ in $(seq 1 60); do
+  kubectl -n argocd get endpointslices -l kubernetes.io/service-name=argocd-repo-server \
+    -o jsonpath='{.items[*].endpoints[*].conditions.ready}' | grep -q true && break
+  sleep 2
+done
 echo "━━ 密钥(本地生成,不进 Git)"
 scripts/secrets.sh
 echo "━━ 根应用"
