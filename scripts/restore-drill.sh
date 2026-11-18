@@ -42,6 +42,9 @@ spec:
   instances: 1
   imageName: $image
   storage: { size: 1Gi }
+  resources:   # the admission policies (require-resources) apply to the drill's Pods and bootstrap Job too
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
   bootstrap:
     recovery:
       source: origin
