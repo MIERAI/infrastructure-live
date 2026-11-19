@@ -49,6 +49,7 @@ tofu -chdir=tofu/kind destroy
 # laptop: host layer, then platform
 (cd ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook site.yml [--check --diff])
 tofu -chdir=tofu/laptop init && tofu -chdir=tofu/laptop apply
+#   at home without Tailscale: TF_VAR_kubeconfig=~/.kube/laptop-lan.yaml TF_VAR_kube_context=laptop-lan
 
 # secrets: edit (decrypts in $EDITOR, re-encrypts on save), then apply (tofu: Kubernetes secrets; ansible: host)
 sops secrets/laptop.sops.yaml
