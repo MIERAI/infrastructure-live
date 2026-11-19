@@ -1,17 +1,24 @@
 # The always-on laptop (k3s from ansible/): platform only. tofu -chdir=tofu/laptop apply
-locals {
-  kubeconfig = pathexpand("~/.kube/laptop.yaml") # written by ansible (playbook site.yml)
+# Reach the cluster over Tailscale (default) or, at home, over the LAN:
+#   TF_VAR_kubeconfig=~/.kube/laptop-lan.yaml TF_VAR_kube_context=laptop-lan tofu -chdir=tofu/laptop apply
+variable "kubeconfig" {
+  type    = string
+  default = "~/.kube/laptop.yaml" # written by ansible (playbook site.yml)
+}
+variable "kube_context" {
+  type    = string
+  default = "laptop"
 }
 
 provider "kubernetes" {
-  config_path    = local.kubeconfig
-  config_context = "laptop"
+  config_path    = pathexpand(var.kubeconfig)
+  config_context = var.kube_context
 }
 
 provider "helm" {
   kubernetes = {
-    config_path    = local.kubeconfig
-    config_context = "laptop"
+    config_path    = pathexpand(var.kubeconfig)
+    config_context = var.kube_context
   }
 }
 
