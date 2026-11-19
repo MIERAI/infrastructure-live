@@ -154,7 +154,10 @@ resource "kubernetes_secret_v1" "delivery_board" {
     name      = "delivery-board-github"
     namespace = kubernetes_namespace_v1.ns["delivery-board"].metadata[0].name
   }
-  data = { token = var.secrets.delivery_board.github_token }
+  data = {
+    token     = var.secrets.delivery_board.github_token
+    dev_token = var.secrets.api_factory["dev"].api_token # "try it": live calls of the cases on dev only (read API)
+  }
 }
 
 # ── Root application (app of apps) ──────────────────────────────────────────────────────────────────────────────────
