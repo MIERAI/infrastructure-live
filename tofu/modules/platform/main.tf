@@ -12,7 +12,8 @@ locals {
   app_namespaces = ["api-factory-dev", "api-factory-prod", "sample-app-dev", "sample-app-prod"]
   db_envs        = { for e in ["dev", "prod"] : "api-factory-${e}" => var.secrets.api_factory[e] }
   offsite        = nonsensitive(var.secrets.offsite != null) # only whether the section exists
-  namespaces     = toset(concat(local.app_namespaces, ["monitoring"], var.in_cluster_object_storage ? ["object-storage"] : [], local.offsite ? ["backup-offsite"] : []))
+  board          = nonsensitive(var.secrets.delivery_board != null)
+  namespaces     = toset(concat(local.app_namespaces, ["monitoring"], var.in_cluster_object_storage ? ["object-storage"] : [], local.offsite ? ["backup-offsite"] : [], local.board ? ["delivery-board"] : []))
 }
 
 # ── Argo CD ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -146,6 +147,16 @@ resource "kubernetes_secret_v1" "offsite" {
   }
 }
 
+# delivery board (gitops-manifests platform/delivery-board): reads PRs / workflow runs of api-factory
+resource "kubernetes_secret_v1" "delivery_board" {
+  count = local.board ? 1 : 0
+  metadata {
+    name      = "delivery-board-github"
+    namespace = kubernetes_namespace_v1.ns["delivery-board"].metadata[0].name
+  }
+  data = { token = var.secrets.delivery_board.github_token }
+}
+
 # ── Root application (app of apps) ──────────────────────────────────────────────────────────────────────────────────
 resource "helm_release" "root" {
   name       = "root"
@@ -161,7 +172,7 @@ resource "helm_release" "root" {
     syncPolicy  = { automated = { prune = true, selfHeal = true } }
   } } })]
   depends_on = [helm_release.argocd, kubernetes_secret_v1.api_factory, kubernetes_secret_v1.backup_s3,
-  kubernetes_secret_v1.ghcr_pull, kubernetes_secret_v1.grafana_admin, kubernetes_secret_v1.seaweedfs_s3, kubernetes_secret_v1.offsite]
+  kubernetes_secret_v1.ghcr_pull, kubernetes_secret_v1.grafana_admin, kubernetes_secret_v1.seaweedfs_s3, kubernetes_secret_v1.offsite, kubernetes_secret_v1.delivery_board]
 }
 
 # ── Local copies for the operator (.secrets/<cluster>/, gitignored): API tokens for callers, UI passwords ────────────
