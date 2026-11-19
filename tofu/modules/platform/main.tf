@@ -102,9 +102,11 @@ resource "kubernetes_secret_v1" "api_factory" {
     name      = "api-factory"
     namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
   }
+  # pool_max_conns: 8 per database and pod (pgx default = CPU count: 2 pods x 3 databases x 12 = 72 backends
+  # OOM-killed the 512Mi primary in the first load test)
   data = {
-    DATABASE_URL      = "postgres://factory:${each.value.db_password}@postgres-rw:5432/factory?sslmode=disable"
-    FACTORY_SHARDS    = "1-2=postgres://factory:${each.value.db_password}@postgres-rw:5432/shard_a?sslmode=disable;*=postgres://factory:${each.value.db_password}@postgres-rw:5432/shard_b?sslmode=disable"
+    DATABASE_URL      = "postgres://factory:${each.value.db_password}@postgres-rw:5432/factory?sslmode=disable&pool_max_conns=8"
+    FACTORY_SHARDS    = "1-2=postgres://factory:${each.value.db_password}@postgres-rw:5432/shard_a?sslmode=disable&pool_max_conns=8;*=postgres://factory:${each.value.db_password}@postgres-rw:5432/shard_b?sslmode=disable&pool_max_conns=8"
     PAGE_TOKEN_KEY    = each.value.page_token_key
     AUTH_TOKEN_SHA256 = sha256(each.value.api_token) # the server only knows the hash
   }
