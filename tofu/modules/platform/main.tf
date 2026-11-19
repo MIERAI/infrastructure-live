@@ -47,7 +47,7 @@ resource "kubernetes_namespace_v1" "ns" {
 }
 
 resource "kubernetes_secret_v1" "ghcr_pull" {
-  for_each = toset(local.app_namespaces)
+  for_each = toset(concat(local.app_namespaces, local.board ? ["delivery-board"] : [])) # + the board's private image
   metadata {
     name      = "ghcr-pull"
     namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
@@ -147,7 +147,8 @@ resource "kubernetes_secret_v1" "offsite" {
   }
 }
 
-# delivery board (gitops-manifests platform/delivery-board): reads PRs / workflow runs of api-factory
+# delivery board (MIERAI/delivery-board, deployed by gitops-manifests platform/delivery-board): reads PRs / workflow runs;
+# promote_token (optional): starts the promote workflow from the board's button (Actions read/write on gitops-manifests)
 resource "kubernetes_secret_v1" "delivery_board" {
   count = local.board ? 1 : 0
   metadata {
@@ -155,8 +156,9 @@ resource "kubernetes_secret_v1" "delivery_board" {
     namespace = kubernetes_namespace_v1.ns["delivery-board"].metadata[0].name
   }
   data = {
-    token     = var.secrets.delivery_board.github_token
-    dev_token = var.secrets.api_factory["dev"].api_token # "try it": live calls of the cases on dev only (read API)
+    token         = var.secrets.delivery_board.github_token
+    dev_token     = var.secrets.api_factory["dev"].api_token # "try it": live calls of the cases on dev only (read API)
+    promote_token = var.secrets.delivery_board.promote_token == null ? "" : var.secrets.delivery_board.promote_token
   }
 }
 
