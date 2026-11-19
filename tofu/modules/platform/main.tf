@@ -9,7 +9,7 @@ terraform {
 }
 
 locals {
-  app_namespaces = ["api-factory-dev", "api-factory-prod", "sample-app-dev", "sample-app-prod"]
+  app_namespaces = ["api-factory-dev", "api-factory-prod", "sample-app-dev", "sample-app-prod", "storefront-dev", "storefront-staging", "storefront-prod"]
   db_envs        = { for e in ["dev", "prod"] : "api-factory-${e}" => var.secrets.api_factory[e] }
   offsite        = nonsensitive(var.secrets.offsite != null) # only whether the section exists
   board          = nonsensitive(var.secrets.delivery_board != null)
