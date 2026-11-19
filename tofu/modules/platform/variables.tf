@@ -7,6 +7,8 @@ variable "secrets" {
     api_factory            = map(object({ api_token = string, db_password = string, page_token_key = string }))
     # off-site copy of the backups (laptop only): sftp key for the phone, rclone crypt password + salt
     offsite = optional(object({ ssh_private_key = string, crypt_password = string, crypt_salt = string }))
+    # delivery board (laptop only): read-only fine-grained GitHub token (api-factory + gitops-manifests)
+    delivery_board = optional(object({ github_token = string }))
   })
 }
 variable "ghcr_user" {
