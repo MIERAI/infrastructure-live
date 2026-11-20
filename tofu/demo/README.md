@@ -33,11 +33,42 @@ TARGET=demo scripts/wait-synced.sh --healthy --timeout 900   # 16 Applications S
 
 The cluster above syncs **our** repository. To change it and watch Argo CD follow:
 
-1. Fork [gitops-manifests](https://github.com/MIERAI/gitops-manifests); in your fork: `scripts/fork.sh <your GitHub
-   user>`, commit, push.
+1. Fork [gitops-manifests](https://github.com/MIERAI/gitops-manifests) (keep the name); in your fork:
+   `scripts/fork.sh <your GitHub user or organization>`, commit, push.
 2. `tofu -chdir=tofu/demo apply -var manifests_repo=https://github.com/<you>/gitops-manifests.git`
 3. Commit to your fork, e.g. `sample-app/overlays/prod`: replicas → Argo CD syncs within ~30 s. A new application =
    a new directory with an `app.yaml` (see `storefront/app.yaml`).
+
+## Release your own code: the whole flow
+
+Your code → test → image in **your** GHCR (signed) → your dev → promote → your prod. Steps 1–2 above first, then:
+
+1. Fork [sample-app](https://github.com/MIERAI/sample-app) (keep the name).
+2. In **both** forks, open the Actions tab and click *I understand my workflows, go ahead and enable them* (GitHub does
+   not run the workflows of a fork until then; there is no API for it).
+3. Let the sample-app fork write to your gitops-manifests (a deploy key: that one repository only):
+   ```sh
+   ssh-keygen -t ed25519 -N '' -C ci-promote -f /tmp/deploy
+   gh repo deploy-key add /tmp/deploy.pub -R <you>/gitops-manifests --allow-write --title ci-promote
+   gh secret set MANIFESTS_DEPLOY_KEY -R <you>/sample-app < /tmp/deploy && rm /tmp/deploy /tmp/deploy.pub
+   ```
+4. Let the promote workflow open pull requests:
+   `gh api -X PUT repos/<you>/gitops-manifests/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true`
+5. Change sample-app (e.g. the greeting in `main.go` and its test), push to `main` (or Actions → ci → Run workflow).
+   CI: test → `ghcr.io/<you>/sample-app:<commit>` (signed) → commits it to your `sample-app/overlays/dev`. The entry
+   switches to your image (`newName`); the other environments keep running ours until you promote.
+6. Your image must be **public** for the demo cluster to pull it (it has no token): under a user account, a package
+   built from a public repository is public; under an organization it is private — package settings → *Change
+   visibility* → Public. Within ~5 min: `curl localhost:28082/hello` shows your change (canary + analysis on the way).
+7. Promote: your gitops-manifests → Actions → promote → app `sample-app` → it opens a PR (version must have run 10 min
+   in dev) → merge → `curl localhost:28083/hello`.
+
+**Forking into an organization** — new organizations block what the flow needs; an owner allows it once in the
+organization's settings: *Actions → General → Workflow permissions*: allow GitHub Actions to create pull requests;
+*Deploy keys*: enabled; *Packages → Package creation*: Public; and, to use the `gh` commands above, *Third-party
+access*: grant GitHub CLI. Under a user account none of this is needed.
+
+Tested end to end with a fork in a separate organization (2026-11-20): every step above, in this order.
 
 ## Remove
 
