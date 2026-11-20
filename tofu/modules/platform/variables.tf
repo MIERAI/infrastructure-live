@@ -4,7 +4,7 @@ variable "secrets" {
   type = object({
     s3                     = object({ access_key = string, secret_key = string })
     grafana_admin_password = string
-    api_factory            = map(object({ api_token = string, db_password = string, page_token_key = string }))
+    api_factory            = map(object({ api_token = string, db_password = string, page_token_key = string })) # {} = none
     # off-site copy of the backups (laptop only): sftp key for the phone, rclone crypt password + salt
     offsite = optional(object({ ssh_private_key = string, crypt_password = string, crypt_salt = string }))
     # delivery board (laptop only): read-only fine-grained GitHub token (api-factory + gitops-manifests)
@@ -16,9 +16,10 @@ variable "ghcr_user" {
   default = "MIERAI"
 }
 variable "ghcr_token" {
-  description = "GHCR pull token (read:packages): TF_VAR_ghcr_token=$(gh auth token --user MIERAI)"
+  description = "GHCR pull token (read:packages): TF_VAR_ghcr_token=$(gh auth token --user MIERAI); \"\" = public images only"
   type        = string
   sensitive   = true
+  default     = ""
 }
 variable "root_path" {
   description = "Path of the root application in gitops-manifests (apps | clusters/<name>)"
@@ -34,6 +35,10 @@ variable "local_secrets_dir" {
 variable "manifests_repo" {
   type    = string
   default = "https://github.com/MIERAI/gitops-manifests.git"
+}
+variable "manifests_revision" {
+  type    = string
+  default = "main"
 }
 variable "argocd_chart_version" {
   type    = string

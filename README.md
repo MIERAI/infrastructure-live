@@ -17,6 +17,11 @@ Infrastructure as code with open-source tools only; no bootstrap shell scripts:
 The GKE version replaces `tofu/kind` (VPC, GKE, Workload Identity, Secret Manager) without changing the delivery flow;
 the laptop's Ansible layer then disappears (cloud hosts are created by OpenTofu).
 
+## Try it: the demo
+
+Anyone can run the platform locally, without our keys or tokens: [`tofu/demo`](tofu/demo/README.md) (one command;
+the platform and every public application). CI runs exactly that every week and on every change.
+
 ## Layout
 
 | Path | What |
@@ -24,6 +29,7 @@ the laptop's Ansible layer then disappears (cloud hosts are created by OpenTofu)
 | `tofu/modules/platform` | Argo CD (Helm chart, pinned), namespaces + runtime secrets, root application (argocd-apps chart) |
 | `tofu/kind` | Local kind cluster (NodePorts 30080–30083 → localhost 18080–18083) + platform; kubeconfig `~/.kube/kind-gitops.yaml` |
 | `tofu/laptop` | Platform on the laptop's k3s (kubeconfig `~/.kube/laptop.yaml` from Ansible) |
+| `tofu/demo` | The demo anyone can run: kind + platform, throwaway secrets, public applications only (gitops-manifests `clusters/demo`) |
 | `ansible/` | `site.yml`: backup disk → k3s → SeaweedFS (S3, outside the cluster) → kubeconfig → GitHub Actions runner |
 | `secrets/` | `kind.sops.yaml`, `laptop.sops.yaml`: S3 keys, database passwords, API tokens, Grafana admin |
 | `scripts/` | Operations only: drills (restore / failover / rebuild), `ui.sh`, `status.sh`, `wait-synced.sh` (`env.sh`: `TARGET=kind\|laptop`) |

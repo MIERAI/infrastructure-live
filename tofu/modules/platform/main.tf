@@ -11,9 +11,9 @@ terraform {
 locals {
   # applications registered by an app.yaml (gitops-manifests, e.g. storefront) are not listed: Argo CD creates their
   # namespaces and Kyverno clones the pull secret into them from gitops-platform/ghcr-pull
-  app_namespaces = ["api-factory-dev", "api-factory-prod"] # only for the runtime secrets written below
-  db_envs        = { for e in ["dev", "prod"] : "api-factory-${e}" => var.secrets.api_factory[e] }
-  offsite        = nonsensitive(var.secrets.offsite != null) # only whether the section exists
+  db_envs        = { for e in nonsensitive(keys(var.secrets.api_factory)) : "api-factory-${e}" => var.secrets.api_factory[e] } # none in the demo
+  app_namespaces = keys(local.db_envs)                                                                                         # only for the runtime secrets written below
+  offsite        = nonsensitive(var.secrets.offsite != null)                                                                   # only whether the section exists
   board          = nonsensitive(var.secrets.delivery_board != null)
   namespaces     = toset(concat(local.app_namespaces, ["monitoring", "gitops-platform"], var.in_cluster_object_storage ? ["object-storage"] : [], local.offsite ? ["backup-offsite"] : [], local.board ? ["delivery-board"] : []))
 }
@@ -51,7 +51,8 @@ resource "kubernetes_namespace_v1" "ns" {
 resource "kubernetes_secret_v1" "ghcr_pull" {
   # gitops-platform: the source Kyverno clones into every application namespace (gitops-manifests
   # platform/policies/ghcr-pull.yaml); delivery-board: its own image (a platform namespace, not an application)
-  for_each = toset(concat(["gitops-platform"], local.board ? ["delivery-board"] : []))
+  # no token (the demo): no pull secret at all; public images are pulled anonymously
+  for_each = nonsensitive(var.ghcr_token) == "" ? toset([]) : toset(concat(["gitops-platform"], local.board ? ["delivery-board"] : []))
   metadata {
     name      = "ghcr-pull"
     namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
@@ -176,7 +177,7 @@ resource "helm_release" "root" {
   values = [yamlencode({ applications = { root = {
     namespace   = "argocd"
     project     = "default"
-    source      = { repoURL = var.manifests_repo, targetRevision = "main", path = var.root_path }
+    source      = { repoURL = var.manifests_repo, targetRevision = var.manifests_revision, path = var.root_path }
     destination = { server = "https://kubernetes.default.svc", namespace = "argocd" }
     syncPolicy  = { automated = { prune = true, selfHeal = true } }
   } } })]
