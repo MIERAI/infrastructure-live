@@ -86,7 +86,7 @@ module "platform" {
 output "next" {
   value = <<-EOT
     export KUBECONFIG=${local.kubeconfig}
-    kubectl -n argocd get applications            # every one Synced / Healthy after ~5-10 min
+    kubectl -n argocd get applications            # 16, all Synced / Healthy after ~3-5 min
     curl localhost:${var.host_port_base + 2}/hello            # sample-app dev
     Argo CD UI: kubectl -n argocd port-forward svc/argocd-server 8080:80 → http://localhost:8080
                 admin / $(cat .secrets/${var.cluster_name}/argocd-admin.password)

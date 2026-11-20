@@ -8,14 +8,14 @@ dev → staging → prod). Private applications (api-factory) are left out.
 
 ## Run
 
-Needs: Docker (≈ 6 GB of memory for it), [OpenTofu](https://opentofu.org) ≥ 1.10, kubectl. macOS or Linux.
+Needs: Docker with ≈ 8 GB of memory (the cluster uses ≈ 5.5 GB), [OpenTofu](https://opentofu.org) ≥ 1.10, kubectl. macOS or Linux.
 
 ```sh
 git clone https://github.com/MIERAI/infrastructure-live && cd infrastructure-live
 tofu -chdir=tofu/demo init
-tofu -chdir=tofu/demo apply          # ~2 min: kind cluster + Argo CD; then Argo CD deploys the rest
+tofu -chdir=tofu/demo apply          # ~1 min: kind cluster + Argo CD; then Argo CD deploys the rest
 export KUBECONFIG=~/.kube/gitops-demo.yaml
-TARGET=demo scripts/wait-synced.sh --healthy --timeout 900   # every Application Synced / Healthy (~5–10 min)
+TARGET=demo scripts/wait-synced.sh --healthy --timeout 900   # 16 Applications Synced / Healthy (~3–5 min)
 ```
 
 ## Look around
@@ -26,8 +26,8 @@ TARGET=demo scripts/wait-synced.sh --healthy --timeout 900   # every Application
 | sample-app dev / prod | `curl localhost:28082/hello`, `curl localhost:28083/hello` |
 | storefront (web → api) | `kubectl -n storefront-dev port-forward svc/web 8081:8080` → http://localhost:8081 |
 | Argo CD UI | `kubectl -n argocd port-forward svc/argocd-server 8080:80` → http://localhost:8080, user `admin`, password in `.secrets/gitops-demo/argocd-admin.password` |
-| Grafana | `kubectl -n monitoring port-forward svc/kps-grafana 3000:80` → http://localhost:3000, `admin` / `.secrets/gitops-demo/grafana-admin.password` |
-| The admission policies at work | `kubectl -n storefront-dev run x --image=nginx` → rejected (no resources, no probe, root user…) |
+| Grafana | `kubectl -n monitoring port-forward svc/platform-monitoring-grafana 3000:80` → http://localhost:3000, `admin` / `.secrets/gitops-demo/grafana-admin.password` |
+| The admission policies at work | `kubectl -n storefront-dev run x --image=nginx` → rejected (no readiness probe, no resources, root user…) |
 
 ## Change things: your fork
 
