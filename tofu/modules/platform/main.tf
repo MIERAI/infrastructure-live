@@ -11,7 +11,7 @@ terraform {
 locals {
   # applications registered by an app.yaml (gitops-manifests, e.g. storefront) are not listed: Argo CD creates their
   # namespaces and Kyverno clones the pull secret into them from gitops-platform/ghcr-pull
-  app_namespaces = ["api-factory-dev", "api-factory-prod", "sample-app-dev", "sample-app-prod"]
+  app_namespaces = ["api-factory-dev", "api-factory-prod"] # only for the runtime secrets written below
   db_envs        = { for e in ["dev", "prod"] : "api-factory-${e}" => var.secrets.api_factory[e] }
   offsite        = nonsensitive(var.secrets.offsite != null) # only whether the section exists
   board          = nonsensitive(var.secrets.delivery_board != null)
@@ -49,8 +49,9 @@ resource "kubernetes_namespace_v1" "ns" {
 }
 
 resource "kubernetes_secret_v1" "ghcr_pull" {
-  # gitops-platform: the source Kyverno clones (gitops-manifests platform/policies/ghcr-pull.yaml); delivery-board: its image
-  for_each = toset(concat(local.app_namespaces, ["gitops-platform"], local.board ? ["delivery-board"] : []))
+  # gitops-platform: the source Kyverno clones into every application namespace (gitops-manifests
+  # platform/policies/ghcr-pull.yaml); delivery-board: its own image (a platform namespace, not an application)
+  for_each = toset(concat(["gitops-platform"], local.board ? ["delivery-board"] : []))
   metadata {
     name      = "ghcr-pull"
     namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
