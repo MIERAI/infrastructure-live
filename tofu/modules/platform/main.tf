@@ -171,6 +171,29 @@ resource "kubernetes_secret_v1" "delivery_board" {
   }
 }
 
+# ── slo-platform: Argo CD reads the private product repository; the lab's regression clones it ─────────────────────────
+resource "kubernetes_secret_v1" "slo_platform_repo" {
+  count = var.slo_platform == null ? 0 : 1
+  metadata {
+    name      = "repo-slo-platform"
+    namespace = "argocd"
+    labels    = { "argocd.argoproj.io/secret-type" = "repository" }
+  }
+  data = { type = "git", url = var.slo_platform.repo, username = "x-access-token", password = var.ghcr_token }
+  lifecycle { ignore_changes = [data] } # the GitHub token rotates on the workstation; refresh with -replace
+  depends_on = [helm_release.argocd]
+}
+
+resource "kubernetes_secret_v1" "slo_platform_git" {
+  count = var.slo_platform == null ? 0 : (var.slo_platform.lab ? 1 : 0)
+  metadata {
+    name      = "git-credentials"
+    namespace = "slo-experiments" # exists on the lab (the regression's namespace)
+  }
+  data = { token = var.ghcr_token }
+  lifecycle { ignore_changes = [data] }
+}
+
 # ── Root application (app of apps) ──────────────────────────────────────────────────────────────────────────────────
 resource "helm_release" "root" {
   name       = "root"
@@ -178,14 +201,27 @@ resource "helm_release" "root" {
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argocd-apps"
   version    = var.argocd_apps_chart_version
-  values = [yamlencode({ applications = { root = {
+  # slo_platform: the product's root Application (exactly its contract: the product's root chart renders the same object
+  # and owns it after the first sync — the release only creates it). Switching from the old root deletes the
+  # Application "root" (no finalizer: nothing it managed is deleted); the new root adopts the same-named children.
+  values = [var.slo_platform == null ? yamlencode({ applications = { root = {
     namespace   = "argocd"
     project     = "default"
     source      = { repoURL = var.manifests_repo, targetRevision = var.manifests_revision, path = var.root_path }
     destination = { server = "https://kubernetes.default.svc", namespace = "argocd" }
     syncPolicy  = { automated = { prune = true, selfHeal = true } }
+    } } }) : yamlencode({ applications = { "slo-platform" = {
+    namespace = "argocd"
+    project   = "default"
+    sources = [
+      { repoURL = var.slo_platform.repo, targetRevision = var.slo_platform.version, path = "platform/root",
+      helm = { valueFiles = ["$instance/platform.yaml"], parameters = [{ name = "cluster", value = var.slo_platform.cluster }] } },
+      { repoURL = var.slo_platform.instance_repo, targetRevision = var.slo_platform.instance_revision, ref = "instance" },
+    ]
+    destination = { server = "https://kubernetes.default.svc", namespace = "argocd" }
+    syncPolicy  = { automated = { prune = true, selfHeal = true } }
   } } })]
-  depends_on = [helm_release.argocd, kubernetes_secret_v1.api_factory, kubernetes_secret_v1.backup_s3,
+  depends_on = [helm_release.argocd, kubernetes_secret_v1.slo_platform_repo, kubernetes_secret_v1.api_factory, kubernetes_secret_v1.backup_s3,
   kubernetes_secret_v1.ghcr_pull, kubernetes_secret_v1.grafana_admin, kubernetes_secret_v1.seaweedfs_s3, kubernetes_secret_v1.offsite, kubernetes_secret_v1.delivery_board]
 }
 

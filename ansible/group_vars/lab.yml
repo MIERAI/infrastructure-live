@@ -10,7 +10,7 @@ server_config_yaml: |
   disable: [traefik]          # apps use NodePorts
   write-kubeconfig-mode: "0644"
   tls-san: [{{ tailscale_ip }}, {{ lan_ip }}, {{ inventory_hostname }}]
-  node-label: ["gitops-platform/lab=true"]
+  node-label: ["gitops-platform/lab=true", "slo-platform/lab=true"]   # the second: slo-platform's regression guard
   kubelet-arg:
     - "system-reserved=memory=512Mi"
     - "eviction-hard=memory.available<300Mi"

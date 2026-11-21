@@ -28,12 +28,14 @@ data "sops_file" "secrets" {
 }
 
 module "platform" {
-  source                        = "../modules/platform"
-  secrets                       = yamldecode(data.sops_file.secrets.raw)
-  ghcr_token                    = var.ghcr_token
-  root_path                     = "clusters/lab"
-  in_cluster_object_storage     = true
-  local_secrets_dir             = "${path.module}/../../.secrets/lab"
+  source                    = "../modules/platform"
+  secrets                   = yamldecode(data.sops_file.secrets.raw)
+  ghcr_token                = var.ghcr_token
+  root_path                 = "clusters/lab"
+  in_cluster_object_storage = true
+  local_secrets_dir         = "${path.module}/../../.secrets/lab"
+  # the platform from slo-platform; this cluster is "lab" in gitops-manifests/platform.yaml
+  slo_platform                  = { version = "v0.1.1", cluster = "lab", lab = true }
   small                         = true
   pull_secret_in_app_namespaces = true # no Kyverno here to clone it
 }
