@@ -48,3 +48,13 @@ variable "argocd_apps_chart_version" {
   type    = string
   default = "2.0.8"
 }
+variable "small" {
+  description = "A small cluster (the lab, 7 GB): Argo CD without Dex and notifications (unused: admin login, no notifications)"
+  type        = bool
+  default     = false
+}
+variable "pull_secret_in_app_namespaces" {
+  description = "Write the GHCR pull secret into the private applications' namespaces (a cluster without Kyverno, which otherwise clones it)"
+  type        = bool
+  default     = false
+}

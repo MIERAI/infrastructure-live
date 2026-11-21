@@ -1,0 +1,18 @@
+# The lab cluster (k3s on xiaoxin: 8 threads, 7 GB): the fault experiments and their daily regression run here, not on
+# the laptop. Its own single-node k3s: server_group = this group, so the k3s role never joins it to the laptop's.
+server_group: lab
+k3s_version: v1.36.5+k3s1
+api_endpoint: "{{ tailscale_ip }}"
+# The label is what the regression checks before injecting anything (gitops-manifests scripts/experiment-regression.py
+# --cluster lab): every node must carry it. 7 GB for the OS and the whole lab: keep memory for the host and evict
+# pods before the kernel's OOM killer picks sshd or k3s.
+server_config_yaml: |
+  disable: [traefik]          # apps use NodePorts
+  write-kubeconfig-mode: "0644"
+  tls-san: [{{ tailscale_ip }}, {{ lan_ip }}, {{ inventory_hostname }}]
+  node-label: ["gitops-platform/lab=true"]
+  kubelet-arg:
+    - "system-reserved=memory=512Mi"
+    - "eviction-hard=memory.available<300Mi"
+kubeconfig: ~/.kube/xiaoxin.yaml  # own file on the workstation: ~/.kube/config is never touched
+user_kubectl: false

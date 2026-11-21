@@ -1,4 +1,5 @@
 # Hosts of the personal platform. "laptop" = the always-on HP laptop (ssh alias in ~/.ssh/config, Tailscale address below).
+# "xiaoxin" = the always-on Lenovo laptop: the lab cluster (faults are injected there, never on "laptop").
 all:
   children:
     server:            # k3s servers (group name expected by k3s.orchestration)
@@ -8,6 +9,12 @@ all:
           tailscale_ip: 100.90.245.89
           lan_ip: 192.168.31.40
           backup_disk_uuid: ce1e0ec3-f2a3-4627-be2a-a7695f190cb5   # 1 TB HDD (ext4) → /srv/backups
+    lab:               # the lab cluster: its own k3s (group_vars/lab.yml: server_group lab, never joins "server")
+      hosts:
+        xiaoxin:
+          ansible_host: xiaoxin
+          tailscale_ip: 100.76.236.114
+          lan_ip: 192.168.3.205
     offsite:           # off-site backup target: the always-plugged-in Android phone (Termux sshd), leaves home with its owner
       hosts:
         phone:
