@@ -1,0 +1,6 @@
+phone_dashboards_src: "{{ ansible_env.HOME }}/grafana/dashboards"   # the phone Grafana's provisioned files
+phone_dashboards_names: [blog, phone-health, phone-mobile, phone]
+phone_dashboards_kubeconfig: "{{ hostvars.laptop.kubeconfig }}"
+phone_dashboards_namespace: monitoring
+# the laptop Grafana's datasource for the phone's Prometheus (gitops-manifests); "prometheus" there is the laptop's own
+phone_dashboards_datasource_uid: phone-prometheus

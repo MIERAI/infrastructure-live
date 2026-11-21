@@ -1,0 +1,58 @@
+# The phone Grafana's dashboards, also in the laptop Grafana (one Grafana to look at). The JSON never enters this
+# public repository: read from the phone at run time, rewritten and applied from the workstation, temp files removed.
+# The ConfigMaps are not in any Argo CD manifest (no tracking-id annotation), so no Application prunes them; the
+# phone's files stay the source of truth: edit there, rerun --tags dashboards.
+# No Grafana folder: the chart's sidecar has no folderAnnotation set, so all sidecar dashboards land in General.
+- name: Dashboards on the phone
+  ansible.builtin.slurp: { src: "{{ phone_dashboards_src }}/{{ item }}.json" }
+  loop: "{{ phone_dashboards_names }}"
+  register: dashboards
+  no_log: true          # contents: personal details of the phone / blog
+
+- name: Applied to the laptop cluster
+  delegate_to: localhost
+  become: false
+  block:
+    - name: Temp directory on the workstation
+      ansible.builtin.tempfile: { state: directory, suffix: .phone-dashboards }
+      register: tmp
+      changed_when: false
+
+    - name: Dashboard files
+      ansible.builtin.copy:
+        content: "{{ item.content | b64decode }}"
+        dest: "{{ tmp.path }}/{{ item.item }}.json"
+        mode: "0600"
+      loop: "{{ dashboards.results }}"
+      loop_control: { label: "{{ item.item }}" }
+      no_log: true
+      changed_when: false
+
+    - name: ConfigMaps (datasource uid rewritten)
+      ansible.builtin.shell: >-
+        python3 -I {{ role_path }}/files/to_configmaps.py {{ phone_dashboards_namespace }}
+        {{ phone_dashboards_datasource_uid }}
+        {% for n in phone_dashboards_names %} {{ tmp.path }}/{{ n }}.json{% endfor %}
+        > {{ tmp.path }}/configmaps.json
+      register: converted
+      changed_when: false
+
+    # server-side apply: no last-applied annotation duplicating each dashboard; diff first so a rerun reports ok
+    - name: Diff against the cluster
+      ansible.builtin.command: >-
+        kubectl --kubeconfig {{ phone_dashboards_kubeconfig | expanduser }} diff --server-side
+        --field-manager=phone-dashboards -f {{ tmp.path }}/configmaps.json
+      register: drift
+      changed_when: false
+      failed_when: drift.rc > 1
+
+    - name: Apply
+      when: drift.rc == 1
+      ansible.builtin.command: >-
+        kubectl --kubeconfig {{ phone_dashboards_kubeconfig | expanduser }} apply --server-side
+        --field-manager=phone-dashboards -f {{ tmp.path }}/configmaps.json
+  always:
+    - name: Temp directory removed
+      when: tmp.path is defined
+      ansible.builtin.file: { path: "{{ tmp.path }}", state: absent }
+      changed_when: false
