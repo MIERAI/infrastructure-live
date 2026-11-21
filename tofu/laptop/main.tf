@@ -33,6 +33,8 @@ module "platform" {
   root_path                 = "clusters/laptop"
   in_cluster_object_storage = false # SeaweedFS is a systemd service on the host (ansible role seaweedfs)
   local_secrets_dir         = "${path.module}/../../.secrets/laptop"
+  # the platform from slo-platform; this cluster is "laptop" in gitops-manifests/platform.yaml
+  slo_platform = { version = "v0.1.1", cluster = "laptop", lab = false }
 }
 
 variable "ghcr_token" {
