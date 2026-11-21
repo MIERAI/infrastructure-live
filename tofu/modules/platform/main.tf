@@ -171,9 +171,9 @@ resource "kubernetes_secret_v1" "delivery_board" {
   }
 }
 
-# ── slo-platform: Argo CD reads the private product repository; the lab's regression clones it ─────────────────────────
+# ── slo-platform, private product only: Argo CD reads it with a token; the lab's regression clones it ────────────────
 resource "kubernetes_secret_v1" "slo_platform_repo" {
-  count = var.slo_platform == null ? 0 : 1
+  count = var.slo_platform == null ? 0 : (var.slo_platform.private ? 1 : 0)
   metadata {
     name      = "repo-slo-platform"
     namespace = "argocd"
@@ -185,7 +185,7 @@ resource "kubernetes_secret_v1" "slo_platform_repo" {
 }
 
 resource "kubernetes_secret_v1" "slo_platform_git" {
-  count = var.slo_platform == null ? 0 : (var.slo_platform.lab ? 1 : 0)
+  count = var.slo_platform == null ? 0 : (var.slo_platform.lab && var.slo_platform.private ? 1 : 0)
   metadata {
     name      = "git-credentials"
     namespace = "slo-experiments" # exists on the lab (the regression's namespace)
