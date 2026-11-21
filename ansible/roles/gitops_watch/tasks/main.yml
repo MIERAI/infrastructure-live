@@ -1,0 +1,45 @@
+# The phone's watcher (files/watch.py): watches the laptop (prod) and xiaoxin (lab, the laptop's outside) from a third
+# machine and speaks on the other one when one of them is in trouble; receives the laptop Alertmanager's Watchdog
+# (dead man's switch). Its own process, next to the user's services.sh (not part of it).
+- name: Directory
+  ansible.builtin.file: { path: "{{ gitops_watch_dir }}", state: directory, mode: "0700" }
+
+- name: Watcher and starter
+  ansible.builtin.copy: { src: "{{ item.src }}", dest: "{{ gitops_watch_dir }}/{{ item.src }}", mode: "{{ item.mode }}" }
+  loop: [{ src: watch.py, mode: "0600" }, { src: run.sh, mode: "0700" }]
+  register: code
+
+- name: Checks
+  ansible.builtin.template: { src: config.json.j2, dest: "{{ gitops_watch_dir }}/config.json", mode: "0600" }
+  register: config
+
+- name: Started at boot (Termux:Boot)
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.termux/boot/30-gitops-watch"
+    mode: "0700"
+    content: |
+      #!/data/data/com.termux/files/usr/bin/sh
+      # the GitOps platform's watcher (infrastructure-live ansible role gitops_watch)
+      date '+%F %T boot-30-gitops-watch' >> "$HOME/boot_trace.log"
+      sleep 20      # network (Tailscale) first
+      sh {{ gitops_watch_dir }}/run.sh
+
+- name: Brought back every 15 min (JobScheduler, persisted)
+  ansible.builtin.shell: |
+    timeout 15 termux-job-scheduler --pending | grep -q "{{ gitops_watch_dir }}/run.sh" && exit 0
+    timeout 15 termux-job-scheduler --job-id {{ gitops_watch_job_id }} --script {{ gitops_watch_dir }}/run.sh \
+      --period-ms 900000 --persisted true --battery-not-low false
+    echo scheduled
+  register: job
+  changed_when: "'scheduled' in job.stdout"
+
+- name: Restart on a change
+  when: code.changed or config.changed
+  ansible.builtin.shell: |
+    [ -f watch.pid ] && kill "$(cat watch.pid)" 2>/dev/null; sleep 1; sh run.sh
+  args: { chdir: "{{ gitops_watch_dir }}" }
+
+- name: Running
+  ansible.builtin.shell: sh run.sh && sleep 2 && kill -0 "$(cat watch.pid)"
+  args: { chdir: "{{ gitops_watch_dir }}" }
+  changed_when: false
