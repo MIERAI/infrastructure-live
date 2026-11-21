@@ -31,7 +31,7 @@ the platform and every public application). CI runs exactly that every week and 
 | `tofu/laptop` | Platform on the laptop's k3s (kubeconfig `~/.kube/laptop.yaml` from Ansible) |
 | `tofu/lab` | The lab cluster: platform on xiaoxin's k3s (`~/.kube/xiaoxin.yaml` from Ansible, group `lab`), where the fault experiments run; small (no Kyverno, no Grafana) |
 | `tofu/demo` | The demo anyone can run: kind + platform, throwaway secrets, public applications only (gitops-manifests `clusters/demo`) |
-| `ansible/` | `site.yml`: backup disk → k3s → SeaweedFS (S3, outside the cluster) → kubeconfig → GitHub Actions runner |
+| `ansible/` | `site.yml`: backup disk → k3s → SeaweedFS (S3, outside the cluster) → kubeconfig → GitHub Actions runner; the lab (xiaoxin); the phone: off-site target and `gitops_watch` (watches the laptop and xiaoxin from outside, speaks on the other machine, receives Alertmanager's Watchdog) |
 | `secrets/` | `kind.sops.yaml`, `laptop.sops.yaml`: S3 keys, database passwords, API tokens, Grafana admin |
 | `scripts/` | Operations only: drills (restore / failover / rebuild), `ui.sh`, `status.sh`, `wait-synced.sh` (`env.sh`: `TARGET=kind\|laptop`) |
 

@@ -1,3 +1,57 @@
 offsite_dir: backups/gitops     # under the Termux home
 # public half of secrets/laptop.sops.yaml offsite.ssh_private_key (used by the laptop cluster's offsite-backup CronJob)
 offsite_pubkey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMjlZOtqOuLmaAX8ImkQfLjcVWqzsQLYOceRA3ym5Av gitops-offsite-backup
+
+# gitops_watch: the phone watches the laptop and xiaoxin from outside; speaks on the other machine (speakd :8770)
+gitops_watch_dir: "{{ ansible_env.HOME }}/gitops-watch"
+gitops_watch_job_id: 30
+gitops_watch_config:
+  port: 9195
+  interval: 30
+  quiet: "21-8"
+  tz_offset_hours: 9
+  repeat_hours: 12
+  speakers:
+    xiaoxin: "http://{{ hostvars.xiaoxin.tailscale_ip }}:8770/"
+    laptop: "http://{{ hostvars.laptop.tailscale_ip }}:8770/"
+  checks:
+    - id: laptop
+      kind: tcp
+      target: "{{ hostvars.laptop.tailscale_ip }}:22"
+      say_via: xiaoxin
+      down_text: 笔记本连不上了，整台机器可能宕机或者断网，生产服务都访问不了。
+      up_text: 笔记本恢复连接了。
+    - id: storefront
+      kind: http
+      target: "http://{{ hostvars.laptop.tailscale_ip }}:30084/"
+      depends: laptop
+      say_via: xiaoxin
+      down_text: 从外面访问不了笔记本上的商店网站。
+      up_text: 商店网站从外面又能访问了。
+    - id: sample-app
+      kind: http
+      target: "http://{{ hostvars.laptop.tailscale_ip }}:30083/hello"
+      depends: laptop
+      say_via: xiaoxin
+      down_text: 从外面访问不了笔记本上的 sample app。
+      up_text: sample app 从外面又能访问了。
+    - id: watchdog             # POST /watchdog: Alertmanager's Watchdog (gitops-manifests clusters/laptop)
+      kind: heartbeat
+      max_age: 600              # Watchdog arrives every minute
+      depends: laptop
+      say_via: xiaoxin
+      down_text: 笔记本的告警系统超过十分钟没有心跳，出了问题可能不会播报。
+      up_text: 笔记本的告警系统恢复了。
+    - id: xiaoxin
+      kind: tcp
+      target: "{{ hostvars.xiaoxin.tailscale_ip }}:22"
+      say_via: laptop
+      down_text: 小新连不上了，测试环境和外部用户流量都停了。
+      up_text: 小新恢复连接了。
+    - id: lab
+      kind: reachable
+      target: "https://{{ hostvars.xiaoxin.tailscale_ip }}:6443/livez"
+      depends: xiaoxin
+      say_via: laptop
+      down_text: 小新上的测试集群没有响应。
+      up_text: 小新上的测试集群恢复了。
