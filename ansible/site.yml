@@ -1,6 +1,7 @@
-# Host layer of the laptop cluster ("the cloud"). Idempotent; the platform on top is tofu/laptop.
+# Host layer of the laptop cluster ("the cloud") and of the lab cluster (xiaoxin). Idempotent; the platform on top is
+# tofu/laptop and tofu/lab.
 #   cd ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook site.yml [--check --diff]
-#   only some parts: --tags disk,k3s,seaweedfs,kubeconfig,runner
+#   only some parts: --tags disk,k3s,seaweedfs,kubeconfig,runner,lab   only one cluster: --limit laptop / --limit lab
 # Note: the k3s.orchestration server role restarts k3s on every run (~30 s without API; pods keep running).
 - name: Backup disk
   hosts: server
@@ -34,6 +35,32 @@
   hosts: server
   become: true
   roles: [{ role: gh_runner, tags: runner }]
+
+- name: Lab cluster (k3s on xiaoxin, its own cluster)
+  hosts: lab
+  become: true
+  tags: lab
+  pre_tasks:
+    - name: k3s install script in the place the role expects
+      ansible.builtin.get_url: { url: https://get.k3s.io/, dest: /usr/local/bin/k3s-install.sh, mode: "0755", force: false }
+    # Ubuntu's default (128) is too few inotify instances for ~80 pods (Argo CD, Prometheus, Chaos Mesh watch files)
+    - name: inotify limits
+      ansible.posix.sysctl: { name: "{{ item.name }}", value: "{{ item.value }}", sysctl_file: /etc/sysctl.d/90-k3s-lab.conf }
+      loop: [{ name: fs.inotify.max_user_instances, value: "512" }, { name: fs.inotify.max_user_watches, value: "524288" }]
+    # AppArmor 5 (Ubuntu 26.04) labels container processes "cri-containerd.apparmor.d//&unconfined", a peer
+    # containerd's default profile does not allow signals to: PostgreSQL could not signal its own processes and
+    # restarted in a loop. Our copy of the profile (files/) is loaded at boot, before k3s; containerd keeps a
+    # profile of that name when one is loaded.
+    - name: containerd's AppArmor profile, allowing signals within a container
+      ansible.builtin.copy: { src: files/cri-containerd.apparmor.d, dest: /etc/apparmor.d/cri-containerd.apparmor.d, mode: "0644" }
+      register: profile
+    - name: load it
+      when: profile.changed
+      ansible.builtin.command: apparmor_parser -r -W /etc/apparmor.d/cri-containerd.apparmor.d
+  roles:
+    - k3s.orchestration.prereq
+    - k3s.orchestration.k3s_server
+    - kubeconfig
 
 - name: Off-site backup target (phone)
   hosts: offsite

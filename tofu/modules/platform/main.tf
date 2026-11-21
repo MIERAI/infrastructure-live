@@ -28,7 +28,7 @@ resource "helm_release" "argocd" {
   version          = var.argocd_chart_version
   wait             = true
   timeout          = 600
-  values = [yamlencode({
+  values = concat([yamlencode({
     fullnameOverride = "argocd" # same object names as the upstream install manifests (argocd-server, …)
     configs = {
       cm     = { "timeout.reconciliation" = "30s" } # no webhook locally: poll Git every 30s
@@ -36,7 +36,10 @@ resource "helm_release" "argocd" {
     }
     # Argo CD's own NetworkPolicies stay off: kindnet drops all ingress of selected pods in this environment
     global = { networkPolicy = { create = false } }
-  })]
+    })], var.small ? [yamlencode({
+    dex           = { enabled = false }
+    notifications = { enabled = false }
+  })] : [])
 }
 
 # ── Runtime secrets ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -52,7 +55,8 @@ resource "kubernetes_secret_v1" "ghcr_pull" {
   # gitops-platform: the source Kyverno clones into every application namespace (gitops-manifests
   # platform/policies/ghcr-pull.yaml); delivery-board: its own image (a platform namespace, not an application)
   # no token (the demo): no pull secret at all; public images are pulled anonymously
-  for_each = nonsensitive(var.ghcr_token) == "" ? toset([]) : toset(concat(["gitops-platform"], local.board ? ["delivery-board"] : []))
+  # pull_secret_in_app_namespaces (no Kyverno to clone it, the lab): the private applications' namespaces too
+  for_each = nonsensitive(var.ghcr_token) == "" ? toset([]) : toset(concat(["gitops-platform"], local.board ? ["delivery-board"] : [], var.pull_secret_in_app_namespaces ? local.app_namespaces : []))
   metadata {
     name      = "ghcr-pull"
     namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name

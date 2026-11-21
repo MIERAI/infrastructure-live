@@ -29,6 +29,7 @@ the platform and every public application). CI runs exactly that every week and 
 | `tofu/modules/platform` | Argo CD (Helm chart, pinned), namespaces + runtime secrets, root application (argocd-apps chart) |
 | `tofu/kind` | Local kind cluster (NodePorts 30080–30083 → localhost 18080–18083) + platform; kubeconfig `~/.kube/kind-gitops.yaml` |
 | `tofu/laptop` | Platform on the laptop's k3s (kubeconfig `~/.kube/laptop.yaml` from Ansible) |
+| `tofu/lab` | The lab cluster: platform on xiaoxin's k3s (`~/.kube/xiaoxin.yaml` from Ansible, group `lab`), where the fault experiments run; small (no Kyverno, no Grafana) |
 | `tofu/demo` | The demo anyone can run: kind + platform, throwaway secrets, public applications only (gitops-manifests `clusters/demo`) |
 | `ansible/` | `site.yml`: backup disk → k3s → SeaweedFS (S3, outside the cluster) → kubeconfig → GitHub Actions runner |
 | `secrets/` | `kind.sops.yaml`, `laptop.sops.yaml`: S3 keys, database passwords, API tokens, Grafana admin |
@@ -56,6 +57,10 @@ tofu -chdir=tofu/kind destroy
 (cd ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook site.yml [--check --diff])
 tofu -chdir=tofu/laptop init && tofu -chdir=tofu/laptop apply
 #   at home without Tailscale: TF_VAR_kubeconfig=~/.kube/laptop-lan.yaml TF_VAR_kube_context=laptop-lan
+
+# lab (xiaoxin, where the fault experiments run): host layer, then platform
+(cd ansible && ansible-playbook site.yml --limit lab)
+tofu -chdir=tofu/lab init && tofu -chdir=tofu/lab apply
 
 # secrets: edit (decrypts in $EDITOR, re-encrypts on save), then apply (tofu: Kubernetes secrets; ansible: host)
 sops secrets/laptop.sops.yaml
