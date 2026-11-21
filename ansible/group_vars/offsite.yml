@@ -46,7 +46,7 @@ gitops_watch_config:
       kind: tcp
       target: "{{ hostvars.xiaoxin.tailscale_ip }}:22"
       say_via: laptop
-      down_text: 小新连不上了，测试环境和外部用户流量都停了。
+      down_text: 小新连不上了，测试环境停了。
       up_text: 小新恢复连接了。
     - id: lab
       kind: reachable
@@ -55,3 +55,20 @@ gitops_watch_config:
       say_via: laptop
       down_text: 小新上的测试集群没有响应。
       up_text: 小新上的测试集群恢复了。
+    # winpc: the consumer side (ENVIRONMENTS.md) — the laptop's users from outside (k6) and the prober of the
+    # laptop's external probe SLOs (blackbox_exporter :9115, Windows tasks ExternalUsers / ExternalProber). winpc
+    # down = those SLOs go absent (a ticket on the laptop): this says which machine. Not in the inventory (not
+    # managed by Ansible): its Tailscale address.
+    - id: winpc
+      kind: tcp
+      target: "100.106.140.35:22"
+      say_via: laptop
+      down_text: winpc 连不上了，外部探测和外部用户流量都停了。
+      up_text: winpc 恢复连接了。
+    - id: prober
+      kind: http
+      target: "http://100.106.140.35:9115/-/healthy"
+      depends: winpc
+      say_via: laptop
+      down_text: winpc 上的外部探测器没有响应，笔记本的外部探测会变成没有数据。
+      up_text: winpc 上的外部探测器恢复了。
