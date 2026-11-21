@@ -62,14 +62,16 @@ variable "slo_platform" {
   description = <<-EOT
     Run the platform from slo-platform (the product) instead of the manifests repository's root path: the root
     Application becomes the product's (gitops-manifests is its instance: platform.yaml there). null = the old root.
-    The product repository is private: Argo CD reads it with the GHCR token's owner (var.ghcr_token, scope repo);
-    lab = true also gives the daily regression that token to clone the product (slo-experiments/git-credentials).
+    private = true (the product repository was private until 2026-11-21): Argo CD reads it with the GHCR token's
+    owner (var.ghcr_token, scope repo), and on a lab the daily regression clones it with that token
+    (slo-experiments/git-credentials). Public product and instance: no credentials at all.
   EOT
   type = object({
     repo              = optional(string, "https://github.com/MIERAI/slo-platform.git")
     version           = string
     cluster           = string
     lab               = optional(bool, false)
+    private           = optional(bool, false)
     instance_repo     = optional(string, "https://github.com/MIERAI/gitops-manifests.git")
     instance_revision = optional(string, "main")
   })
