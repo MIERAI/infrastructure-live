@@ -4,7 +4,7 @@
 # Phases: tofu destroy → tofu apply (kind + Argo CD + secrets + root app) → every Application Synced/Healthy → smoke
 # checks. Needs: TF_VAR_ghcr_token (gh auth token --user MIERAI, read:packages) and the age key (secrets/kind.sops.yaml).
 # (each app serves /healthz; api-factory answers an authenticated RPC; the databases archive WAL).
-# Not covered: data. Backups live in the cluster's object store and go with it (on GKE: GCS, outside the cluster);
+# Not covered: data. Backups live in the cluster's object store and go with it (a cloud version would keep them outside it);
 # the databases come back empty (dev re-seeded by the migrate init container).
 set -euo pipefail
 cd "$(dirname "$0")/.."

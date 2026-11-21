@@ -171,7 +171,7 @@ resource "kubernetes_secret_v1" "delivery_board" {
   }
 }
 
-# ── slo-platform, private product only: Argo CD reads it with a token; the lab's regression clones it ────────────────
+# ── slo-platform as a private repository (private = true; the public product needs none): token for Argo CD + lab ─
 resource "kubernetes_secret_v1" "slo_platform_repo" {
   count = var.slo_platform == null ? 0 : (var.slo_platform.private ? 1 : 0)
   metadata {
