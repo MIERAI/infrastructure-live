@@ -33,7 +33,7 @@ module "platform" {
   root_path                 = "clusters/laptop"
   in_cluster_object_storage = false # SeaweedFS is a systemd service on the host (ansible role seaweedfs)
   local_secrets_dir         = "${path.module}/../../.secrets/laptop"
-  backup_namespaces         = ["catalog-dev", "catalog-staging"] # storefront v2 catalog (gitops-manifests catalog/): its database backs up like api-factory's
+  backup_namespaces         = ["catalog-dev", "catalog-staging", "catalog-prod"] # storefront v2 catalog (gitops-manifests catalog/): its database backs up like api-factory's
   # the platform from slo-platform; this cluster is "laptop" in gitops-manifests/platform.yaml
   slo_platform = { version = "v0.1.1", cluster = "laptop", lab = false }
 }
