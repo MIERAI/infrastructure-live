@@ -53,6 +53,17 @@ variable "small" {
   type        = bool
   default     = false
 }
+variable "backup_namespaces" {
+  description = <<-EOT
+    Application namespaces (registered by an app.yaml in gitops-manifests, e.g. catalog-dev) whose CloudNativePG
+    cluster backs up to the object store: created here like api-factory's (the Secret must exist before the first
+    sync; Argo CD adds its labels later) and given backup-s3 (var.secrets.s3), nothing else. An existing namespace:
+    tofu import 'module.platform.kubernetes_namespace_v1.ns["<name>"]' <name> once, before the apply. Removing a
+    name later deletes its namespace (as for api-factory's): move the state out first (tofu state rm).
+  EOT
+  type        = list(string)
+  default     = []
+}
 variable "pull_secret_in_app_namespaces" {
   description = "Write the GHCR pull secret into the private applications' namespaces (a cluster without Kyverno, which otherwise clones it)"
   type        = bool
