@@ -14,6 +14,12 @@ gitops_watch_config:
   speakers:
     xiaoxin: "http://{{ hostvars.xiaoxin.tailscale_ip }}:8770/"
     laptop: "http://{{ hostvars.laptop.tailscale_ip }}:8770/"
+  # POST /notify: Gatus on this phone (~/gatus, ENVIRONMENTS.md 4.9) owns the endpoint checks (the laptop's services,
+  # certificate expiry) and its status page; its alerts are announced here. group (Gatus endpoint group) → which
+  # machine speaks, and which check of ours hides them (the machine itself unreachable: one sentence, not one each).
+  notify:
+    via: { laptop: xiaoxin, lab: laptop }
+    depends: { laptop: laptop, lab: lab }
   checks:
     - id: laptop
       kind: tcp
@@ -21,20 +27,7 @@ gitops_watch_config:
       say_via: xiaoxin
       down_text: 笔记本连不上了，整台机器可能宕机或者断网，生产服务都访问不了。
       up_text: 笔记本恢复连接了。
-    - id: storefront
-      kind: http
-      target: "http://{{ hostvars.laptop.tailscale_ip }}:30084/"
-      depends: laptop
-      say_via: xiaoxin
-      down_text: 从外面访问不了笔记本上的商店网站。
-      up_text: 商店网站从外面又能访问了。
-    - id: sample-app
-      kind: http
-      target: "http://{{ hostvars.laptop.tailscale_ip }}:30083/hello"
-      depends: laptop
-      say_via: xiaoxin
-      down_text: 从外面访问不了笔记本上的 sample app。
-      up_text: sample app 从外面又能访问了。
+    # storefront / sample-app from outside: Gatus since 2026-11-23 (POST /notify above)
     - id: watchdog             # POST /watchdog: Alertmanager's Watchdog (gitops-manifests clusters/laptop)
       kind: heartbeat
       max_age: 600              # Watchdog arrives every minute
@@ -55,6 +48,19 @@ gitops_watch_config:
       say_via: laptop
       down_text: 小新上的测试集群没有响应。
       up_text: 小新上的测试集群恢复了。
+    - id: lab-watchdog         # POST /lab-watchdog: the lab Alertmanager's Watchdog (gitops-manifests platform.yaml lab)
+      kind: heartbeat
+      max_age: 600
+      depends: lab
+      say_via: laptop
+      down_text: 小新的告警系统超过十分钟没有心跳，测试集群的告警可能停了。
+      up_text: 小新的告警系统恢复了。
+    - id: gatus                # the endpoint checker on this phone (~/gatus): down = nobody checks the services
+      kind: http
+      target: "http://100.80.225.15:8085/health"
+      say_via: laptop
+      down_text: 手机上的外部检查 Gatus 停了，生产服务现在没人从外面检查。
+      up_text: 手机上的外部检查 Gatus 恢复了。
     # winpc: the consumer side (ENVIRONMENTS.md) — the laptop's users from outside (k6) and the prober of the
     # laptop's external probe SLOs (blackbox_exporter :9115, Windows tasks ExternalUsers / ExternalProber). winpc
     # down = those SLOs go absent (a ticket on the laptop): this says which machine. Not in the inventory (not

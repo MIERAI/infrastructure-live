@@ -17,6 +17,7 @@ def at(h, m=0, day=21):
 CFG = {
     "quiet": "21-8", "repeat_hours": 12,
     "speakers": {"xiaoxin": "http://x/", "laptop": "http://l/"},
+    "notify": {"via": {"laptop": "xiaoxin"}, "depends": {"laptop": "laptop"}},
     "checks": [
         {"id": "laptop", "kind": "tcp", "target": "l:22", "say_via": "xiaoxin",
          "down_text": "笔记本连不上了。", "up_text": "笔记本恢复了。"},
@@ -141,6 +142,41 @@ class Watch(unittest.TestCase):
         f.down.add("xiaoxin")
         run(f, 3)
         self.assertEqual(f.notified, ["小新连不上了。"])
+
+    def test_notify_event_spoken_and_resolved(self):
+        f = watcher(at(10))
+        ev = {"name": "laptop/storefront", "group": "laptop", "text": "商店网站(prod)"}
+        self.assertEqual(f.w.event({**ev, "state": "down"}), "外部检查失败：商店网站(prod)。")
+        self.assertEqual(f.spoken, [("http://x/", "外部检查失败：商店网站(prod)。")])
+        self.assertEqual(f.w.event({**ev, "state": "up"}), "外部检查恢复：商店网站(prod)。")
+        self.assertIsNone(f.w.event({**ev, "state": "up"}))          # no second "up"
+
+    def test_notify_hidden_while_the_machine_is_down(self):
+        f = watcher(at(10))
+        f.down.add("laptop")
+        run(f, 3)
+        ev = {"name": "laptop/grafana", "group": "laptop", "text": "Grafana"}
+        self.assertIsNone(f.w.event({**ev, "state": "down"}))
+        self.assertIsNone(f.w.event({**ev, "state": "up"}))           # never announced down: no "up"
+        self.assertEqual(f.spoken, [("http://x/", "笔记本连不上了。")])
+
+    def test_notify_at_night_held_until_morning(self):
+        f = watcher(at(23))
+        ev = {"name": "laptop/argo", "group": "laptop", "text": "Argo CD"}
+        self.assertIsNone(f.w.event({**ev, "state": "down"}))
+        self.assertEqual(f.spoken, [])
+        f.t = at(8, 0, day=22) - 30
+        self.assertEqual(run(f, 1), ["夜里发现的问题，还没有恢复。外部检查失败：Argo CD。"])
+        self.assertEqual(f.w.event({**ev, "state": "up"}), "外部检查恢复：Argo CD。")
+
+    def test_notify_down_and_back_at_night_is_not_spoken(self):
+        f = watcher(at(2))
+        ev = {"name": "laptop/board", "group": "laptop", "text": "交付看板"}
+        f.w.event({**ev, "state": "down"})
+        self.assertIsNone(f.w.event({**ev, "state": "up"}))
+        f.t = at(8) - 30
+        self.assertEqual(run(f, 2), [])
+        self.assertEqual(f.spoken, [])
 
     def test_unknown_heartbeat_is_refused(self):
         f = watcher(at(10))
