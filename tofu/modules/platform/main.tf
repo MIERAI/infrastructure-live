@@ -13,9 +13,10 @@ locals {
   # namespaces and Kyverno clones the pull secret into them from gitops-platform/ghcr-pull
   db_envs        = { for e in nonsensitive(keys(var.secrets.api_factory)) : "api-factory-${e}" => var.secrets.api_factory[e] } # none in the demo
   app_namespaces = keys(local.db_envs)                                                                                         # only for the runtime secrets written below
+  backup_envs    = toset(concat(local.app_namespaces, var.backup_namespaces))                                                  # backup-s3 only: their login is the operator's
   offsite        = nonsensitive(var.secrets.offsite != null)                                                                   # only whether the section exists
   board          = nonsensitive(var.secrets.delivery_board != null)
-  namespaces     = toset(concat(local.app_namespaces, ["monitoring", "gitops-platform"], var.in_cluster_object_storage ? ["object-storage"] : [], local.offsite ? ["backup-offsite"] : [], local.board ? ["delivery-board"] : []))
+  namespaces     = toset(concat(local.app_namespaces, var.backup_namespaces, ["monitoring", "gitops-platform"], var.in_cluster_object_storage ? ["object-storage"] : [], local.offsite ? ["backup-offsite"] : [], local.board ? ["delivery-board"] : []))
 }
 
 # ── Argo CD ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ resource "kubernetes_secret_v1" "seaweedfs_s3" {
 }
 
 resource "kubernetes_secret_v1" "backup_s3" {
-  for_each = local.db_envs
+  for_each = local.backup_envs
   metadata {
     name      = "backup-s3"
     namespace = kubernetes_namespace_v1.ns[each.key].metadata[0].name
