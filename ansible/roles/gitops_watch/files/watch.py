@@ -14,6 +14,12 @@ is down is not announced (one sentence: "the laptop is unreachable", not four).
 Announcements: speakd (POST {"text","lang"}) on the check's `say_via` machine, the other one when that fails, a
 Termux notification when both fail. Quiet hours (21-8): nothing is spoken; at 8 what is still down is said once.
 Still down: said again every `repeat_hours`. GET /status: the state as JSON; GET /metrics: gitops_watch_up{check}.
+
+POST /notify: an event from another checker on this phone (Gatus, ~/gatus: the endpoint checks, the status page,
+certificate expiry), JSON {"name", "group", "state": "down"|"up", "text"}: announced like a check of this watcher —
+quiet hours, the morning summary, the fallback to the other speaker / a notification — on the machine that
+`notify.via[group]` names; nothing while the check `notify.depends[group]` is down (that machine is unreachable: one
+sentence, not one per endpoint). An "up" whose "down" was never announced is not announced either.
 """
 import datetime
 import json
@@ -51,6 +57,7 @@ class Watcher:
                       for c in cfg["checks"]}
         self.beats = {c["id"]: start for c in cfg["checks"] if c["kind"] == "heartbeat"}   # grace after a start
         self.held = {}   # id → sentence, down during quiet hours, said in the morning if still down
+        self.ext = {}    # /notify: name → {"said": bool, "via": machine} while down
 
     # ── probes ──────────────────────────────────────────────────────────────────────────────────────────────────
     def _probe(self, c):
@@ -161,6 +168,11 @@ class Watcher:
             if self.held:
                 still = {}   # say_via → sentences, in the order of the checks
                 for i, t in self.held.items():
+                    if i.startswith("ext:"):   # a /notify event: still down (an "up" removes it from held)
+                        if i[4:] in self.ext:
+                            self.ext[i[4:]]["said"] = True
+                            still.setdefault(self.ext[i[4:]]["via"], []).append(t)
+                        continue
                     if not self.state[i]["up"] and not self.blocked(by_id[i]):
                         self.state[i]["said"] = now
                         still.setdefault(by_id[i]["say_via"], []).append(t)
@@ -177,6 +189,40 @@ class Watcher:
             self.say(text, via)
         return [t for t, _ in said]
 
+    # ── events from other checkers (POST /notify) ─────────────────────────────────────────────────────────────
+    def event(self, ev):
+        """→ the sentence announced now, or None (held for the morning, hidden by a dependency, or nothing to say)"""
+        ncfg = self.cfg.get("notify", {})
+        name, group = str(ev.get("name", "?")), str(ev.get("group", ""))
+        what = str(ev.get("text") or name)
+        down = ev.get("state") == "down"
+        via = ncfg.get("via", {}).get(group, ncfg.get("default_via", next(iter(self.cfg["speakers"]))))
+        dep = ncfg.get("depends", {}).get(group)
+        now = self.now()
+        quiet = in_quiet(datetime.datetime.fromtimestamp(now, self.tz).hour, self.cfg.get("quiet", "21-8"))
+        key = "ext:" + name
+        with self.lock:
+            hidden = bool(dep) and dep in self.state and not self.state[dep]["up"]
+            if down:
+                self.ext[name] = {"said": False, "via": via}
+                text = ncfg.get("down", "外部检查失败：{}。").format(what)
+                if hidden:
+                    log(event="notify-hidden", name=name, depends=dep)
+                    return None
+                if quiet:
+                    self.held[key] = text
+                    log(event="held", check=key, text=text)
+                    return None
+                self.ext[name]["said"] = True
+            else:
+                e = self.ext.pop(name, None)
+                self.held.pop(key, None)
+                if not e or not e["said"]:
+                    return None
+                text = ncfg.get("up", "外部检查恢复：{}。").format(what)
+        self.say(text, via)
+        return text
+
     def status(self):
         with self.lock:
             return {i: {"up": s["up"], "since": s["since"], "last_ok": s["last_ok"]} for i, s in self.state.items()}
@@ -190,7 +236,19 @@ def serve(w, port):
     class H(BaseHTTPRequestHandler):
         def do_POST(self):
             n = int(self.headers.get("Content-Length") or 0)
-            self.rfile.read(n)
+            body = self.rfile.read(min(n, 65536))
+            if self.path == "/notify":
+                try:
+                    ev = json.loads(body or b"{}")
+                except ValueError:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+                log(event="notify", **{k: str(v)[:200] for k, v in ev.items()})
+                threading.Thread(target=w.event, args=(ev,), daemon=True).start()   # speaking takes seconds
+                self.send_response(202)
+                self.end_headers()
+                return
             ok = w.beat(self.path.strip("/"))
             self.send_response(200 if ok else 404)
             self.end_headers()
