@@ -64,6 +64,16 @@ variable "backup_namespaces" {
   type        = list(string)
   default     = []
 }
+variable "api_factory_envs" {
+  description = <<-EOT
+    Which environments of api-factory (keys of var.secrets.api_factory) this cluster runs: their namespaces
+    api-factory-<env> and runtime secrets are written here. null = every one in the secrets. Must match the cluster's
+    gitops-manifests platform.yaml (clusters.<name>.applications.environments.api-factory). Removing an environment
+    deletes its namespace: only after Argo CD has removed its Applications.
+  EOT
+  type        = list(string)
+  default     = null
+}
 variable "pull_secret_in_app_namespaces" {
   description = "Write the GHCR pull secret into the private applications' namespaces (a cluster without Kyverno, which otherwise clones it)"
   type        = bool

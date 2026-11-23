@@ -9,12 +9,15 @@ terraform {
 }
 
 locals {
+  # api-factory's environments on this cluster: those of the secrets, or the ones var.api_factory_envs names
+  api_factory_envs = [for e in nonsensitive(keys(var.secrets.api_factory)) : e if var.api_factory_envs == null || contains(coalesce(var.api_factory_envs, []), e)]
+
   # applications registered by an app.yaml (gitops-manifests, e.g. storefront) are not listed: Argo CD creates their
   # namespaces and Kyverno clones the pull secret into them from gitops-platform/ghcr-pull
-  db_envs        = { for e in nonsensitive(keys(var.secrets.api_factory)) : "api-factory-${e}" => var.secrets.api_factory[e] } # none in the demo
-  app_namespaces = keys(local.db_envs)                                                                                         # only for the runtime secrets written below
-  backup_envs    = toset(concat(local.app_namespaces, var.backup_namespaces))                                                  # backup-s3 only: their login is the operator's
-  offsite        = nonsensitive(var.secrets.offsite != null)                                                                   # only whether the section exists
+  db_envs        = { for e in local.api_factory_envs : "api-factory-${e}" => var.secrets.api_factory[e] } # none in the demo
+  app_namespaces = keys(local.db_envs)                                                                    # only for the runtime secrets written below
+  backup_envs    = toset(concat(local.app_namespaces, var.backup_namespaces))                             # backup-s3 only: their login is the operator's
+  offsite        = nonsensitive(var.secrets.offsite != null)                                              # only whether the section exists
   board          = nonsensitive(var.secrets.delivery_board != null)
   namespaces     = toset(concat(local.app_namespaces, var.backup_namespaces, ["monitoring", "gitops-platform"], var.in_cluster_object_storage ? ["object-storage"] : [], local.offsite ? ["backup-offsite"] : [], local.board ? ["delivery-board"] : []))
 }
