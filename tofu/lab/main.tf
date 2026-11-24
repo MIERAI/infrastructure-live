@@ -36,6 +36,7 @@ module "platform" {
   local_secrets_dir         = "${path.module}/../../.secrets/lab"
   api_factory_envs          = ["dev"]         # no production replicas on the lab (gitops-manifests platform.yaml clusters.lab)
   backup_namespaces         = ["catalog-dev"] # storefront v2 catalog (gitops-manifests catalog/): the lab runs its dev only (platform.yaml clusters.lab.applications.environments)
+  phone_traces_namespaces   = ["v2-lab", "catalog-dev", "api-factory-dev"]
   # the platform from slo-platform; this cluster is "lab" in gitops-manifests/platform.yaml
   slo_platform                  = { version = "v0.1.1", cluster = "lab", lab = true }
   small                         = true

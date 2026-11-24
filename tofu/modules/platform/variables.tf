@@ -9,7 +9,14 @@ variable "secrets" {
     offsite = optional(object({ ssh_private_key = string, crypt_password = string, crypt_salt = string }))
     # delivery board (laptop only): read-only fine-grained GitHub token (api-factory + gitops-manifests)
     delivery_board = optional(object({ github_token = string, promote_token = optional(string) }))
+    # the phone's auth proxy (~/authproxy): Bearer tokens per signal; grafana_read where Grafana runs (laptop)
+    phone_auth = optional(object({ metrics_write = string, logs_write = string, traces_write = string, grafana_read = optional(string) }))
   })
+}
+variable "phone_traces_namespaces" {
+  description = "Namespaces whose services export traces to the phone (secret phone-auth-traces, read by OTEL_EXPORTER_OTLP_HEADERS)"
+  type        = list(string)
+  default     = []
 }
 variable "ghcr_user" {
   type    = string
