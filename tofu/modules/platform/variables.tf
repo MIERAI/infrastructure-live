@@ -49,7 +49,7 @@ variable "manifests_revision" {
 }
 variable "argocd_chart_version" {
   type    = string
-  default = "10.11.6" # Argo CD v3.5.6
+  default = "10.18.3" # Argo CD v3.6.2
 }
 variable "argocd_apps_chart_version" {
   type    = string
