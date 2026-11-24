@@ -8,7 +8,7 @@ api_endpoint: "{{ tailscale_ip }}"
 # pods before the kernel's OOM killer picks sshd or k3s.
 server_config_yaml: |
   disable: [traefik]          # apps use NodePorts
-  write-kubeconfig-mode: "0644"
+  write-kubeconfig-mode: "0600"   # root only; the kubeconfig role fetches it with become
   tls-san: [{{ tailscale_ip }}, {{ lan_ip }}, {{ inventory_hostname }}]
   node-label: ["gitops-platform/lab=true", "slo-platform/lab=true"]   # the second: slo-platform's regression guard
   kubelet-arg:
