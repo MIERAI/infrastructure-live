@@ -175,6 +175,51 @@ resource "kubernetes_secret_v1" "delivery_board" {
   }
 }
 
+# ── The phone's auth proxy (Caddy ~/authproxy, ~/workspace/gitops ENVIRONMENTS.md 4.11): Loki, Tempo and both of its
+# Prometheus servers only answer a Bearer token. One token per cluster and signal (a leaked trace token can only add
+# spans); the phone has the same values in ~/authproxy/tokens.env (600). gitops-manifests only names these secrets.
+# log-shipping and the traces namespaces are Argo CD's (or the backup's): referenced by name, not created here.
+locals {
+  phone_auth    = nonsensitive(var.secrets.phone_auth != null)
+  phone_grafana = local.phone_auth && nonsensitive(try(var.secrets.phone_auth.grafana_read, null) != null)
+}
+
+resource "kubernetes_secret_v1" "phone_metrics" { # remote_write of the cluster's Prometheus → long-term Prometheus
+  count = local.phone_auth ? 1 : 0
+  metadata {
+    name      = "phone-auth-metrics"
+    namespace = kubernetes_namespace_v1.ns["monitoring"].metadata[0].name
+  }
+  data = { token = var.secrets.phone_auth.metrics_write }
+}
+
+resource "kubernetes_secret_v1" "phone_grafana" { # Grafana's datasources: Loki, Tempo, phone + long-term Prometheus
+  count = local.phone_grafana ? 1 : 0
+  metadata {
+    name      = "phone-auth-grafana"
+    namespace = kubernetes_namespace_v1.ns["monitoring"].metadata[0].name
+  }
+  data = { token = var.secrets.phone_auth.grafana_read }
+}
+
+resource "kubernetes_secret_v1" "phone_logs" { # Alloy (gitops-manifests platform/log-shipping) → Loki
+  count = local.phone_auth ? 1 : 0
+  metadata {
+    name      = "phone-auth-logs"
+    namespace = "log-shipping"
+  }
+  data = { token = var.secrets.phone_auth.logs_write }
+}
+
+resource "kubernetes_secret_v1" "phone_traces" { # services' OTLP exporters → Tempo
+  for_each = local.phone_auth ? toset(var.phone_traces_namespaces) : toset([])
+  metadata {
+    name      = "phone-auth-traces"
+    namespace = each.key
+  }
+  data = { token = var.secrets.phone_auth.traces_write }
+}
+
 # ── slo-platform as a private repository (private = true; the public product needs none): token for Argo CD + lab ─
 resource "kubernetes_secret_v1" "slo_platform_repo" {
   count = var.slo_platform == null ? 0 : (var.slo_platform.private ? 1 : 0)
