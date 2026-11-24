@@ -73,6 +73,11 @@
     - name: reload sshd
       when: sshd_dropin.changed
       ansible.builtin.systemd_service: { name: ssh, state: reloaded }
+    # API audit policy (group_vars: kube-apiserver-arg points at it). In place before the k3s role (re)starts k3s.
+    - name: Kubernetes API audit policy
+      ansible.builtin.copy: { src: files/k8s-audit-policy.yaml, dest: /etc/rancher/k3s/audit-policy.yaml, mode: "0600" }
+    - name: audit log directory
+      ansible.builtin.file: { path: /var/lib/rancher/k3s/server/logs, state: directory, mode: "0700" }
   roles:
     - k3s.orchestration.prereq
     - k3s.orchestration.k3s_server

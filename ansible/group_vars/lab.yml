@@ -14,5 +14,12 @@ server_config_yaml: |
   kubelet-arg:
     - "system-reserved=memory=512Mi"
     - "eviction-hard=memory.available<300Mi"
+  # API audit log (files/k8s-audit-policy.yaml): shipped by the node-logs DaemonSet; rotated by the API server
+  kube-apiserver-arg:
+    - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+    - "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log"
+    - "audit-log-maxage=7"
+    - "audit-log-maxbackup=4"
+    - "audit-log-maxsize=100"
 kubeconfig: ~/.kube/xiaoxin.yaml  # own file on the workstation: ~/.kube/config is never touched
 user_kubectl: false
