@@ -40,7 +40,8 @@ module "platform" {
   # the platform from slo-platform; this cluster is "lab" in gitops-manifests/platform.yaml
   slo_platform                  = { version = "v0.1.1", cluster = "lab", lab = true }
   small                         = true
-  pull_secret_in_app_namespaces = true # no Kyverno here to clone it
+  pull_secret_in_app_namespaces = true      # no Kyverno here to clone it
+  argocd_chart_version          = "10.18.3" # Argo CD v3.6.2: the lab first, then the module default (the laptop)
 }
 
 variable "ghcr_token" {
