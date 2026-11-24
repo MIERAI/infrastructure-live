@@ -90,6 +90,6 @@
   hosts: offsite
   roles: [{ role: phone_dashboards, tags: dashboards }]
 
-- name: Detection alerting (phone): Loki's ruler + an Alertmanager next to it (security-platform detections)
+- name: Detection alerting on the phone (Loki's ruler and an Alertmanager next to it, security-platform detections)
   hosts: offsite
   roles: [{ role: detection_alerting, tags: detection }]
