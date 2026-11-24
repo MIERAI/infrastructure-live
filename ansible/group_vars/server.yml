@@ -3,7 +3,7 @@ k3s_version: v1.36.5+k3s1
 api_endpoint: "{{ tailscale_ip }}"
 server_config_yaml: |
   disable: [traefik]          # apps use NodePorts
-  write-kubeconfig-mode: "0644"
+  write-kubeconfig-mode: "0600"   # root only; the kubeconfig role fetches it with become
   tls-san: [{{ tailscale_ip }}, {{ lan_ip }}, {{ inventory_hostname }}]
 kubeconfig: ~/.kube/laptop.yaml   # own file on the workstation: ~/.kube/config is never touched
 user_kubectl: false
