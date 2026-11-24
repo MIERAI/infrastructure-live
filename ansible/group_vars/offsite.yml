@@ -18,7 +18,7 @@ gitops_watch_config:
   # certificate expiry) and its status page; its alerts are announced here. group (Gatus endpoint group) → which
   # machine speaks, and which check of ours hides them (the machine itself unreachable: one sentence, not one each).
   notify:
-    via: { laptop: xiaoxin, lab: laptop }
+    via: { laptop: xiaoxin, lab: laptop, security: laptop }   # security: detection pages without a cluster (hosts, SaaS)
     depends: { laptop: laptop, lab: lab }
   checks:
     - id: laptop
@@ -78,3 +78,7 @@ gitops_watch_config:
       say_via: laptop
       down_text: winpc 上的外部探测器没有响应，笔记本的外部探测会变成没有数据。
       up_text: winpc 上的外部探测器恢复了。
+
+# detection_alerting: page-severity detections → the watcher's /alertmanager (spoken like its own events; the lab is
+# recorded only; quiet hours apply)
+detection_page_webhook: http://127.0.0.1:9195/alertmanager

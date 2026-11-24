@@ -1,0 +1,16 @@
+# Detection alerting on the phone (the independent observer): Loki's ruler evaluates security-platform's detection
+# rules over the logs it stores and sends alerts to an Alertmanager on the same phone. Nothing here listens beyond
+# 127.0.0.1. See security-platform docs/detection.md.
+detection_dir: "{{ ansible_env.HOME }}/detection"
+detection_job_id: 31
+alertmanager_version: "0.35.0"
+alertmanager_sha256: b7a8a69f849c6f837348b05476195862152f9de8eae338eb36ab29801d341654   # linux-arm64, release sha256sums.txt
+alertmanager_port: 9093
+loki_dir: "{{ ansible_env.HOME }}/loki"
+# The rules: security-platform detections/render.py --params <the instance's params> (allowlists name accounts and
+# subjects, so the rendered file stays in the operator's private data directory; never committed here).
+detection_rules_file: "{{ lookup('env', 'HOME') }}/workspace/security-platform-data/detections/loki-rules.yaml"
+# Alert history (ALERTS series) for detection metrics: the long-term Prometheus on the phone (remote-write receiver)
+detection_remote_write_url: http://127.0.0.1:9091/api/v1/write
+# Receivers by route. Empty webhook = recorded in Alertmanager only (the lab notifies nobody).
+detection_page_webhook: ""

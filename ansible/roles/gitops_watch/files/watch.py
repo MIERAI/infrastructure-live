@@ -15,6 +15,8 @@ Announcements: speakd (POST {"text","lang"}) on the check's `say_via` machine, t
 Termux notification when both fail. Quiet hours (21-8): nothing is spoken; at 8 what is still down is said once.
 Still down: said again every `repeat_hours`. GET /status: the state as JSON; GET /metrics: gitops_watch_up{check}.
 
+POST /alertmanager: an Alertmanager webhook (the detection Alertmanager on this phone, page severity): each alert is
+announced like a /notify event in group `cluster` label or "security" (its own sentence: 安全告警：<title>).
 POST /notify: an event from another checker on this phone (Gatus, ~/gatus: the endpoint checks, the status page,
 certificate expiry), JSON {"name", "group", "state": "down"|"up", "text"}: announced like a check of this watcher —
 quiet hours, the morning summary, the fallback to the other speaker / a notification — on the machine that
@@ -205,7 +207,7 @@ class Watcher:
             hidden = bool(dep) and dep in self.state and not self.state[dep]["up"]
             if down:
                 self.ext[name] = {"said": False, "via": via}
-                text = ncfg.get("down", "外部检查失败：{}。").format(what)
+                text = ev.get("down_text") or ncfg.get("down", "外部检查失败：{}。").format(what)
                 if hidden:
                     log(event="notify-hidden", name=name, depends=dep)
                     return None
@@ -219,9 +221,25 @@ class Watcher:
                 self.held.pop(key, None)
                 if not e or not e["said"]:
                     return None
-                text = ncfg.get("up", "外部检查恢复：{}。").format(what)
+                text = ev.get("up_text") or ncfg.get("up", "外部检查恢复：{}。").format(what)
         self.say(text, via)
         return text
+
+    # ── Alertmanager webhook (POST /alertmanager): the detection Alertmanager on this phone ─────────────────────
+    def alerts(self, payload):
+        """Alertmanager webhook payload → one event per alert (firing = down, resolved = up), group from the alert's
+        `cluster` label or "security"; announced like /notify events (quiet hours, dependencies)."""
+        said = []
+        for a in payload.get("alerts") or []:
+            lab, ann = a.get("labels") or {}, a.get("annotations") or {}
+            title = ann.get("title") or lab.get("alertname", "?")
+            ev = {"name": "alert:" + str(a.get("fingerprint") or lab.get("alertname")), "group": lab.get("cluster") or "security",
+                  "state": "down" if a.get("status") == "firing" else "up",
+                  "down_text": f"安全告警：{title}。", "up_text": f"安全告警解除：{title}。"}
+            t = self.event(ev)
+            if t:
+                said.append(t)
+        return said
 
     def status(self):
         with self.lock:
@@ -246,6 +264,18 @@ def serve(w, port):
                     return
                 log(event="notify", **{k: str(v)[:200] for k, v in ev.items()})
                 threading.Thread(target=w.event, args=(ev,), daemon=True).start()   # speaking takes seconds
+                self.send_response(202)
+                self.end_headers()
+                return
+            if self.path == "/alertmanager":
+                try:
+                    payload = json.loads(body or b"{}")
+                except ValueError:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+                log(event="alertmanager", alerts=len(payload.get("alerts") or []), status=str(payload.get("status")))
+                threading.Thread(target=w.alerts, args=(payload,), daemon=True).start()
                 self.send_response(202)
                 self.end_headers()
                 return

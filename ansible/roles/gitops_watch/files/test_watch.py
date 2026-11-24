@@ -151,6 +151,16 @@ class Watch(unittest.TestCase):
         self.assertEqual(f.w.event({**ev, "state": "up"}), "外部检查恢复：商店网站(prod)。")
         self.assertIsNone(f.w.event({**ev, "state": "up"}))          # no second "up"
 
+    def test_alertmanager_webhook(self):
+        f = watcher(at(10))
+        firing = {"status": "firing", "alerts": [{"status": "firing", "fingerprint": "abc",
+                  "labels": {"alertname": "SecurityDetectionAuthSshLoginUntrustedNetwork", "severity": "page"},
+                  "annotations": {"title": "Successful SSH login from outside the trusted networks"}}]}
+        self.assertEqual(f.w.alerts(firing), ["安全告警：Successful SSH login from outside the trusted networks。"])
+        resolved = {"status": "resolved", "alerts": [dict(firing["alerts"][0], status="resolved")]}
+        self.assertEqual(f.w.alerts(resolved), ["安全告警解除：Successful SSH login from outside the trusted networks。"])
+        self.assertEqual(f.w.alerts(resolved), [])                    # no second "up"
+
     def test_notify_hidden_while_the_machine_is_down(self):
         f = watcher(at(10))
         f.down.add("laptop")

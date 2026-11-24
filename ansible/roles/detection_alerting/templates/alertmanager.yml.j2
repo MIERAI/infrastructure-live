@@ -1,0 +1,21 @@
+# Detection Alertmanager (infrastructure-live ansible role detection_alerting). Alerts come from Loki's ruler on this
+# phone (security-platform detections). Routing by labels only: severity (page / ticket / info) and cluster.
+route:
+  receiver: record
+  group_by: [alertname, detection, cluster, host]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    - matchers: ['cluster="lab"']          # the lab notifies nobody: recorded (Alertmanager API, ALERTS history)
+      receiver: record
+{% if detection_page_webhook %}
+    - matchers: ['severity="page"']
+      receiver: page
+{% endif %}
+receivers:
+  - name: record
+{% if detection_page_webhook %}
+  - name: page
+    webhook_configs: [{ url: "{{ detection_page_webhook }}", send_resolved: true }]
+{% endif %}
