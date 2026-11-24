@@ -1,0 +1,86 @@
+# Detection alerting on the phone (defaults/main.yml): an Alertmanager next to Loki, Loki's ruler, the rules.
+- name: Directories
+  ansible.builtin.file: { path: "{{ item }}", state: directory, mode: "0700" }
+  loop: ["{{ detection_dir }}", "{{ detection_dir }}/data", "{{ loki_dir }}/data/rules/fake"]
+
+- name: Alertmanager release (checksum verified)
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-arm64.tar.gz"
+    dest: "{{ detection_dir }}/alertmanager-{{ alertmanager_version }}.tar.gz"
+    checksum: "sha256:{{ alertmanager_sha256 }}"
+    mode: "0600"
+  register: tarball
+
+- name: Alertmanager binary
+  when: tarball.changed
+  ansible.builtin.shell: |
+    tar -xzf alertmanager-{{ alertmanager_version }}.tar.gz --strip-components=1 alertmanager-{{ alertmanager_version }}.linux-arm64/alertmanager
+    chmod 0700 alertmanager
+  args: { chdir: "{{ detection_dir }}" }
+  register: binary
+
+- name: Alertmanager configuration
+  ansible.builtin.template: { src: alertmanager.yml.j2, dest: "{{ detection_dir }}/alertmanager.yml", mode: "0600" }
+  register: amconfig
+
+- name: Starter
+  ansible.builtin.copy: { src: run.sh, dest: "{{ detection_dir }}/run.sh", mode: "0700" }
+
+- name: Started at boot (Termux:Boot)
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.termux/boot/31-detection"
+    mode: "0700"
+    content: |
+      #!/data/data/com.termux/files/usr/bin/sh
+      # detection Alertmanager (infrastructure-live ansible role detection_alerting)
+      date '+%F %T boot-31-detection' >> "$HOME/boot_trace.log"
+      sh {{ detection_dir }}/run.sh
+
+- name: Brought back every 15 min (JobScheduler, persisted)
+  ansible.builtin.shell: |
+    timeout 15 termux-job-scheduler --pending | grep -q "{{ detection_dir }}/run.sh" && exit 0
+    timeout 15 termux-job-scheduler --job-id {{ detection_job_id }} --script {{ detection_dir }}/run.sh \
+      --period-ms 900000 --persisted true --battery-not-low false
+    echo scheduled
+  register: job
+  changed_when: "'scheduled' in job.stdout"
+
+- name: Restart Alertmanager on a change
+  when: binary.changed or amconfig.changed
+  ansible.builtin.shell: |
+    [ -f alertmanager.pid ] && kill "$(cat alertmanager.pid)" 2>/dev/null; sleep 2; AM_PORT={{ alertmanager_port }} sh run.sh
+  args: { chdir: "{{ detection_dir }}" }
+
+- name: Alertmanager ready
+  ansible.builtin.shell: AM_PORT={{ alertmanager_port }} sh run.sh && sleep 3 && curl -sf http://127.0.0.1:{{ alertmanager_port }}/-/ready
+  args: { chdir: "{{ detection_dir }}" }
+  changed_when: false
+
+- name: Detection rules (rendered by security-platform with the instance's params; read by the ruler every minute)
+  ansible.builtin.copy: { src: "{{ detection_rules_file }}", dest: "{{ loki_dir }}/data/rules/fake/security-detection.yaml", mode: "0600" }
+
+- name: Loki's ruler (a managed block in loki.yaml, verified before it is used)
+  ansible.builtin.blockinfile:
+    path: "{{ loki_dir }}/loki.yaml"
+    marker: "# {mark} ruler (infrastructure-live ansible role detection_alerting)"
+    backup: true
+    validate: "{{ loki_dir }}/loki -config.file=%s -verify-config"
+    block: |
+      ruler:
+        alertmanager_url: http://127.0.0.1:{{ alertmanager_port }}
+        enable_api: true
+        evaluation_interval: 1m
+        poll_interval: 1m
+        rule_path: {{ loki_dir }}/data/ruler-scratch
+        storage: { type: local, local: { directory: {{ loki_dir }}/data/rules } }
+        ring: { kvstore: { store: inmemory } }
+        wal: { dir: {{ loki_dir }}/data/ruler-wal }
+        remote_write:
+          enabled: true
+          clients:
+            longterm: { url: {{ detection_remote_write_url }} }
+  register: ruler
+
+- name: Restart Loki for the ruler configuration (log shippers retry meanwhile)
+  when: ruler.changed
+  ansible.builtin.shell: ~/services.sh restart loki

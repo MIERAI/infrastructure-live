@@ -89,3 +89,7 @@
 - name: The phone's Grafana dashboards in the laptop Grafana (JSON read from the phone, never committed)
   hosts: offsite
   roles: [{ role: phone_dashboards, tags: dashboards }]
+
+- name: Detection alerting (phone): Loki's ruler + an Alertmanager next to it (security-platform detections)
+  hosts: offsite
+  roles: [{ role: detection_alerting, tags: detection }]
