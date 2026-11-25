@@ -17,6 +17,23 @@
     - name: k3s install script in the place the role expects
       ansible.builtin.get_url: { url: https://get.k3s.io/, dest: /usr/local/bin/k3s-install.sh, mode: "0755", force: false }
       tags: k3s
+    # The same AppArmor 5 profile as the lab (see the lab play): without it PostgreSQL restarted in a loop after the
+    # laptop's reboot to a newer kernel. Loaded before the k3s role (re)starts k3s.
+    - name: containerd's AppArmor profile, allowing signals within a container
+      ansible.builtin.copy: { src: files/cri-containerd.apparmor.d, dest: /etc/apparmor.d/cri-containerd.apparmor.d, mode: "0644" }
+      register: profile
+      tags: k3s
+    - name: load it
+      when: profile.changed
+      ansible.builtin.command: apparmor_parser -r -W /etc/apparmor.d/cri-containerd.apparmor.d
+      tags: k3s
+    # API audit policy (group_vars/server.yml: kube-apiserver-arg points at it). In place before the k3s role (re)starts k3s.
+    - name: Kubernetes API audit policy
+      ansible.builtin.copy: { src: files/k8s-audit-policy.yaml, dest: /etc/rancher/k3s/audit-policy.yaml, mode: "0600" }
+      tags: k3s
+    - name: audit log directory
+      ansible.builtin.file: { path: /var/lib/rancher/k3s/server/logs, state: directory, mode: "0700" }
+      tags: k3s
   roles:
     - { role: k3s.orchestration.prereq, tags: k3s }
     - { role: k3s.orchestration.k3s_server, tags: k3s }

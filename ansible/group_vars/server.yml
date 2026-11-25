@@ -5,6 +5,13 @@ server_config_yaml: |
   disable: [traefik]          # apps use NodePorts
   write-kubeconfig-mode: "0600"   # root only; the kubeconfig role fetches it with become
   tls-san: [{{ tailscale_ip }}, {{ lan_ip }}, {{ inventory_hostname }}]
+  # API audit log (files/k8s-audit-policy.yaml): shipped by the node-logs DaemonSet; rotated by the API server
+  kube-apiserver-arg:
+    - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+    - "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log"
+    - "audit-log-maxage=7"
+    - "audit-log-maxbackup=4"
+    - "audit-log-maxsize=100"
 kubeconfig: ~/.kube/laptop.yaml   # own file on the workstation: ~/.kube/config is never touched
 user_kubectl: false
 # seaweedfs
