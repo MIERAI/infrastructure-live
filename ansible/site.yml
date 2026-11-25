@@ -1,8 +1,10 @@
-# Host layer of the laptop cluster ("the cloud") and of the lab cluster (xiaoxin). Idempotent; the platform on top is
-# tofu/laptop and tofu/lab.
+# Host layer of the laptop cluster ("the cloud"), of the lab cluster (xiaoxin) and of the phone (off-site target,
+# watcher, dashboards, detection alerting). Idempotent; the platform on top is tofu/laptop and tofu/lab.
 #   cd ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook site.yml [--check --diff]
-#   only some parts: --tags disk,k3s,seaweedfs,kubeconfig,runner,lab,watch,dashboards   only one cluster: --limit laptop / --limit lab
-# Note: the k3s.orchestration server role restarts k3s on every run (~30 s without API; pods keep running).
+#   only some parts: --tags disk,k3s,seaweedfs,kubeconfig,runner,lab,offsite,watch,dashboards,detection
+#   only one host: --limit laptop / --limit lab / --limit offsite (without --limit: every host)
+# Note: the k3s.orchestration server role restarts k3s on every run of the k3s or lab play (~30 s without API; pods
+# keep running; not in --check). The README's "What runs where" lists each play, how to verify it and roll it back.
 - name: Backup disk
   hosts: server
   become: true

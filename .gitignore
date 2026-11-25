@@ -36,5 +36,5 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-# 本地生成的密钥(scripts/secrets.sh)
+# 本地生成的密钥(OpenTofu 写入 .secrets/<cluster>/: API token、UI 密码)
 .secrets/

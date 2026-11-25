@@ -1,5 +1,6 @@
 # The platform on any Kubernetes cluster: Argo CD (Helm) → runtime secrets (from SOPS) → root application.
-# Everything after that comes from gitops-manifests (Argo CD reconciles it).
+# Everything after that comes from slo-platform and its instance gitops-manifests (var.slo_platform), or from
+# gitops-manifests' root_path when slo_platform is null (Argo CD reconciles it).
 terraform {
   required_providers {
     helm       = { source = "hashicorp/helm" }
@@ -175,10 +176,11 @@ resource "kubernetes_secret_v1" "delivery_board" {
   }
 }
 
-# ── The phone's auth proxy (Caddy ~/authproxy, ~/workspace/gitops ENVIRONMENTS.md 4.11): Loki, Tempo and both of its
+# ── The phone's auth proxy (Caddy ~/authproxy, installed by hand on the phone): Loki, Tempo and both of its
 # Prometheus servers only answer a Bearer token. One token per cluster and signal (a leaked trace token can only add
 # spans); the phone has the same values in ~/authproxy/tokens.env (600). gitops-manifests only names these secrets.
-# log-shipping and the traces namespaces are Argo CD's (or the backup's): referenced by name, not created here.
+# log-shipping and the traces namespaces are Argo CD's (or the backup's): referenced by name, not created here — on a
+# new cluster the first apply fails on these two until Argo CD has created the namespaces; apply again after the sync.
 locals {
   phone_auth    = nonsensitive(var.secrets.phone_auth != null)
   phone_grafana = local.phone_auth && nonsensitive(try(var.secrets.phone_auth.grafana_read, null) != null)

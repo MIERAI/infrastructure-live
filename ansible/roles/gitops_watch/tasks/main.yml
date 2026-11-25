@@ -1,6 +1,7 @@
-# The phone's watcher (files/watch.py): watches the laptop (prod) and xiaoxin (lab, the laptop's outside) from a third
-# machine and speaks on the other one when one of them is in trouble; receives the laptop Alertmanager's
-# and the lab Alertmanager's Watchdog (dead man's switches) and announces the events of Gatus (POST /notify).
+# The phone's watcher (files/watch.py): watches the laptop (prod), xiaoxin (lab, the laptop's outside) and winpc from
+# a third machine and speaks on the other one when one of them is in trouble; receives the laptop Alertmanager's
+# and the lab Alertmanager's Watchdog (dead man's switches) and announces the events of Gatus (POST /notify) and the
+# detection Alertmanager's pages (POST /alertmanager, role detection_alerting).
 # Its own process, next to the user's services.sh (not part of it).
 - name: Directory
   ansible.builtin.file: { path: "{{ gitops_watch_dir }}", state: directory, mode: "0700" }

@@ -2,7 +2,7 @@ offsite_dir: backups/gitops     # under the Termux home
 # public half of secrets/laptop.sops.yaml offsite.ssh_private_key (used by the laptop cluster's offsite-backup CronJob)
 offsite_pubkey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMjlZOtqOuLmaAX8ImkQfLjcVWqzsQLYOceRA3ym5Av gitops-offsite-backup
 
-# gitops_watch: the phone watches the laptop and xiaoxin from outside; speaks on the other machine (speakd :8770)
+# gitops_watch: the phone watches the laptop, xiaoxin and winpc from outside; speaks on the other machine (speakd :8770)
 gitops_watch_dir: "{{ ansible_env.HOME }}/gitops-watch"
 gitops_watch_job_id: 30
 gitops_watch_config:
@@ -14,7 +14,7 @@ gitops_watch_config:
   speakers:
     xiaoxin: "http://{{ hostvars.xiaoxin.tailscale_ip }}:8770/"
     laptop: "http://{{ hostvars.laptop.tailscale_ip }}:8770/"
-  # POST /notify: Gatus on this phone (~/gatus, ENVIRONMENTS.md 4.9) owns the endpoint checks (the laptop's services,
+  # POST /notify: Gatus on this phone (~/gatus, installed by hand, not by this repository) owns the endpoint checks (the laptop's services,
   # certificate expiry) and its status page; its alerts are announced here. group (Gatus endpoint group) → which
   # machine speaks, and which check of ours hides them (the machine itself unreachable: one sentence, not one each).
   notify:
@@ -61,7 +61,7 @@ gitops_watch_config:
       say_via: laptop
       down_text: 手机上的外部检查 Gatus 停了，生产服务现在没人从外面检查。
       up_text: 手机上的外部检查 Gatus 恢复了。
-    # winpc: the consumer side (ENVIRONMENTS.md) — the laptop's users from outside (k6) and the prober of the
+    # winpc: the consumer side — the laptop's users from outside (k6) and the prober of the
     # laptop's external probe SLOs (blackbox_exporter :9115, Windows tasks ExternalUsers / ExternalProber). winpc
     # down = those SLOs go absent (a ticket on the laptop): this says which machine. Not in the inventory (not
     # managed by Ansible): its Tailscale address.

@@ -41,7 +41,8 @@ provider "helm" {
   }
 }
 
-# Secrets: secrets/kind.sops.yaml (age key on the workstation). CI has no age key: it passes throwaway values instead.
+# Secrets: secrets/kind.sops.yaml (age key on the workstation), or secrets_json (throwaway values, for a run without the
+# age key; CI no longer applies this root: its end-to-end test is tofu/demo).
 data "sops_file" "secrets" {
   count       = var.secrets_json == "" ? 1 : 0
   source_file = "${path.module}/../../secrets/kind.sops.yaml"
@@ -63,7 +64,7 @@ variable "ghcr_token" {
 }
 
 variable "secrets_json" {
-  description = "Same structure as secrets/kind.sops.yaml, as JSON (CI only: throwaway values, no age key in CI)"
+  description = "Same structure as secrets/kind.sops.yaml, as JSON (throwaway values, a run without the age key)"
   type        = string
   default     = ""
   sensitive   = true

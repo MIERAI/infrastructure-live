@@ -1,5 +1,5 @@
 variable "secrets" {
-  description = "Decrypted secrets/<cluster>.sops.yaml (s3, grafana_admin_password, api_factory.{dev,prod})"
+  description = "Decrypted secrets/<cluster>.sops.yaml (s3, grafana_admin_password, api_factory.{dev,prod}; optional: offsite, delivery_board, phone_auth)"
   sensitive   = true
   type = object({
     s3                     = object({ access_key = string, secret_key = string })
