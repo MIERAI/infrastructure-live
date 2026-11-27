@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: MIERAI/docs-platform/ci@6fc8b9837255156cf5d2e1d97497c4e2f26a150a # main
+      - uses: MIERAI/docs-platform/ci@6194c2621a2ad45ebf54240bddd76bd14ea5c940 # main
         with:
           task: ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
           claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
