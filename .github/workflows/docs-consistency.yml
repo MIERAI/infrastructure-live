@@ -1,0 +1,35 @@
+# docs-platform (https://github.com/MIERAI/docs-platform): keeps this repository's documentation
+# true to its code. On push and weekly it keeps the claim ledger (Actions cache); on a pull
+# request it comments the places the change makes the documentation disagree with the code.
+# AI spend is capped per month (monthly-usd). Optional: it never blocks a merge.
+name: docs-consistency
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "21 3 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+concurrency:
+  group: docs-consistency-${{ github.event.pull_request.number || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: MIERAI/docs-platform/ci@6fc8b9837255156cf5d2e1d97497c4e2f26a150a # main
+        with:
+          task: ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
+          claude-oauth-token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
